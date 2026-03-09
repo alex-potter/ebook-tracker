@@ -6,6 +6,7 @@ import type { AnalysisResult, Character, ParsedEbook } from '@/types';
 import CharacterCard from '@/components/CharacterCard';
 import ChapterSelector from '@/components/ChapterSelector';
 import LocationBoard from '@/components/LocationBoard';
+import SeriesPicker from '@/components/SeriesPicker';
 import UploadZone from '@/components/UploadZone';
 
 type SortKey = 'importance' | 'name' | 'status';
@@ -18,8 +19,14 @@ const IMPORTANCE_ORDER: Record<Character['importance'], number> = {
 };
 
 interface StoredBookState {
-  lastAnalyzedIndex: number;
+  lastAnalyzedIndex: number; // -1 = series carry-forward with no chapters of this book analyzed yet
   result: AnalysisResult;
+}
+
+interface SavedBookEntry {
+  title: string;
+  author: string;
+  lastAnalyzedIndex: number;
 }
 
 function storageKey(title: string, author: string) {
@@ -41,6 +48,27 @@ function saveStored(title: string, author: string, state: StoredBookState) {
   } catch {
     // storage full or unavailable — silently ignore
   }
+}
+
+function listSavedBooks(excludeTitle: string, excludeAuthor: string): SavedBookEntry[] {
+  const results: SavedBookEntry[] = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith('ebook-tracker::')) continue;
+      const [, title, author] = key.split('::');
+      if (title === excludeTitle && author === excludeAuthor) continue;
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const state = JSON.parse(raw) as StoredBookState;
+      if (state.lastAnalyzedIndex >= 0) {
+        results.push({ title, author, lastAnalyzedIndex: state.lastAnalyzedIndex });
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return results;
 }
 
 async function analyzeChapter(
@@ -80,6 +108,10 @@ export default function Home() {
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
 
+  // Series picker state
+  const [pendingBook, setPendingBook] = useState<ParsedEbook | null>(null);
+  const [seriesOptions, setSeriesOptions] = useState<SavedBookEntry[]>([]);
+
   const [currentIndex, setCurrentIndex] = useState(0);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -95,24 +127,48 @@ export default function Home() {
   const [filter, setFilter] = useState<Character['importance'] | 'all'>('all');
   const [search, setSearch] = useState('');
 
-  // Tracks stored state for the currently loaded book
   const storedRef = useRef<StoredBookState | null>(null);
+  // The "base" result to start rebuilds from (null = fresh, set = series carry-forward)
+  const seriesBaseRef = useRef<AnalysisResult | null>(null);
+
+  function activateBook(parsed: ParsedEbook, initialStored: StoredBookState | null) {
+    storedRef.current = initialStored;
+    seriesBaseRef.current = initialStored?.lastAnalyzedIndex === -1 ? initialStored.result : null;
+    setBook(parsed);
+    setCurrentIndex(0);
+    if (initialStored && initialStored.lastAnalyzedIndex >= 0) {
+      setResult(initialStored.result);
+      setCurrentIndex(initialStored.lastAnalyzedIndex);
+    }
+  }
 
   const handleFile = useCallback(async (file: File) => {
     setParsing(true);
     setParseError(null);
     setBook(null);
+    setPendingBook(null);
+    setSeriesOptions([]);
     setResult(null);
     storedRef.current = null;
+    seriesBaseRef.current = null;
     try {
       const parsed = await parseEpub(file);
-      setBook(parsed);
-      setCurrentIndex(0);
-      const stored = loadStored(parsed.title, parsed.author);
-      storedRef.current = stored;
-      if (stored) {
-        setResult(stored.result);
-        setCurrentIndex(stored.lastAnalyzedIndex);
+
+      // Check for an existing saved state for this exact book
+      const ownStored = loadStored(parsed.title, parsed.author);
+      if (ownStored) {
+        // Resume exactly where we left off — no series picker needed
+        activateBook(parsed, ownStored);
+        return;
+      }
+
+      // Check for other saved books that could be series predecessors
+      const others = listSavedBooks(parsed.title, parsed.author);
+      if (others.length > 0) {
+        setPendingBook(parsed);
+        setSeriesOptions(others);
+      } else {
+        activateBook(parsed, null);
       }
     } catch (err) {
       setParseError(err instanceof Error ? err.message : 'Failed to parse EPUB.');
@@ -120,6 +176,24 @@ export default function Home() {
       setParsing(false);
     }
   }, []);
+
+  function handleContinueFrom(prevTitle: string, prevAuthor: string) {
+    if (!pendingBook) return;
+    const prevStored = loadStored(prevTitle, prevAuthor);
+    if (!prevStored) { activateBook(pendingBook, null); return; }
+    // lastAnalyzedIndex = -1 signals "series carry-forward, no chapters of THIS book analyzed"
+    const carried: StoredBookState = { lastAnalyzedIndex: -1, result: prevStored.result };
+    setPendingBook(null);
+    setSeriesOptions([]);
+    activateBook(pendingBook, carried);
+  }
+
+  function handleStartFresh() {
+    if (!pendingBook) return;
+    setPendingBook(null);
+    setSeriesOptions([]);
+    activateBook(pendingBook, null);
+  }
 
   const handleAnalyze = useCallback(async () => {
     if (!book) return;
@@ -134,8 +208,9 @@ export default function Home() {
       let body: Record<string, unknown>;
 
       if (canIncrement) {
+        const fromIndex = stored.lastAnalyzedIndex + 1; // 0 when lastAnalyzedIndex is -1
         const newChapters = book.chapters
-          .slice(stored.lastAnalyzedIndex + 1, currentIndex + 1)
+          .slice(fromIndex, currentIndex + 1)
           .map((ch) => ({ title: ch.title, text: ch.text }));
         body = {
           newChapters,
@@ -187,7 +262,9 @@ export default function Home() {
     setAnalyzeError(null);
     setRebuildProgress({ current: 0, total: currentIndex + 1 });
 
-    let accumulated: AnalysisResult | null = null;
+    // Start from series carry-forward state if present, otherwise null (fresh)
+    let accumulated: AnalysisResult | null = seriesBaseRef.current;
+
     try {
       for (let i = 0; i <= currentIndex; i++) {
         if (rebuildCancelRef.current) break;
@@ -196,7 +273,6 @@ export default function Home() {
         const chapter = { title: book.chapters[i].title, text: book.chapters[i].text };
         accumulated = await analyzeChapter(book.title, book.author, chapter, accumulated);
 
-        // Save intermediate progress so a cancel still has a useful partial result
         const partial: StoredBookState = { lastAnalyzedIndex: i, result: accumulated };
         storedRef.current = partial;
         saveStored(book.title, book.author, partial);
@@ -225,6 +301,21 @@ export default function Home() {
       return 0;
     });
 
+  // Series picker shown after parsing when other saved books exist
+  if (pendingBook) {
+    return (
+      <main className="min-h-screen p-6">
+        <SeriesPicker
+          newBookTitle={pendingBook.title}
+          newBookAuthor={pendingBook.author}
+          savedBooks={seriesOptions}
+          onContinueFrom={handleContinueFrom}
+          onStartFresh={handleStartFresh}
+        />
+      </main>
+    );
+  }
+
   if (!book) {
     return (
       <main className="min-h-screen p-6">
@@ -237,13 +328,13 @@ export default function Home() {
   }
 
   const stored = storedRef.current;
-  const hasStoredState = !!stored;
+  const hasStoredState = !!stored && stored.lastAnalyzedIndex >= 0;
+  const isSeriesContinuation = stored?.lastAnalyzedIndex === -1;
   const canIncrement = stored && currentIndex > stored.lastAnalyzedIndex;
   const busy = analyzing || rebuilding;
 
   return (
     <main className="min-h-screen flex flex-col">
-      {/* Top bar */}
       <header className="bg-white border-b border-amber-100 px-6 py-3 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
           <span className="text-2xl">📖</span>
@@ -253,13 +344,16 @@ export default function Home() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {isSeriesContinuation && (
+            <span className="text-xs text-violet-500 font-medium">📚 Series mode</span>
+          )}
           {hasStoredState && (
             <span className="text-xs text-amber-400">
               Progress saved · last analyzed ch.{stored.lastAnalyzedIndex + 1}
             </span>
           )}
           <button
-            onClick={() => { setBook(null); setResult(null); storedRef.current = null; }}
+            onClick={() => { setBook(null); setResult(null); storedRef.current = null; seriesBaseRef.current = null; }}
             className="text-xs text-amber-500 hover:text-amber-700 underline underline-offset-2"
           >
             Load different book
@@ -268,7 +362,6 @@ export default function Home() {
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Left sidebar */}
         <aside className="w-72 flex-shrink-0 bg-white border-r border-amber-100 p-4 overflow-y-auto">
           <ChapterSelector
             chapters={book.chapters}
@@ -288,16 +381,20 @@ export default function Home() {
           )}
         </aside>
 
-        {/* Main content */}
         <div className="flex-1 overflow-y-auto p-6">
           {!result && !busy && (
             <div className="flex flex-col items-center justify-center h-full text-center gap-4">
-              <span className="text-6xl">🔍</span>
+              <span className="text-6xl">{isSeriesContinuation ? '📚' : '🔍'}</span>
               <p className="text-lg font-medium text-amber-600">
-                Select your current chapter and click <strong>Analyze Characters</strong>
+                {isSeriesContinuation
+                  ? <>Characters from the previous book are loaded. Select your chapter and click <strong>Update Characters</strong>.</>
+                  : <>Select your current chapter and click <strong>Analyze Characters</strong></>
+                }
               </p>
               <p className="text-sm text-amber-400 max-w-xs">
-                Claude will only read what you&apos;ve read so far — zero spoilers.
+                {isSeriesContinuation
+                  ? 'Only new chapters will be read — series characters are already tracked.'
+                  : "Claude will only read what you've read so far — zero spoilers."}
               </p>
             </div>
           )}
@@ -323,30 +420,27 @@ export default function Home() {
             <div className="flex flex-col items-center justify-center h-full gap-5">
               <div className="w-14 h-14 border-4 border-violet-400 border-t-transparent rounded-full animate-spin" />
               <div className="text-center">
-                <p className="text-violet-700 font-semibold text-lg">
-                  Rebuilding dataset…
-                </p>
+                <p className="text-violet-700 font-semibold text-lg">Rebuilding dataset…</p>
                 <p className="text-sm text-violet-500 mt-1">
                   Chapter {rebuildProgress.current} of {rebuildProgress.total}
                   {' '}· <em>{book.chapters[rebuildProgress.current - 1]?.title}</em>
                 </p>
+                {seriesBaseRef.current && (
+                  <p className="text-xs text-violet-400 mt-1">Starting from series carry-forward</p>
+                )}
               </div>
-              {/* Progress bar */}
               <div className="w-64 bg-violet-100 rounded-full h-2">
                 <div
                   className="bg-violet-400 h-2 rounded-full transition-all duration-300"
                   style={{ width: `${(rebuildProgress.current / rebuildProgress.total) * 100}%` }}
                 />
               </div>
-              <p className="text-xs text-violet-400">
-                Results update live · you can cancel at any time
-              </p>
+              <p className="text-xs text-violet-400">Results update live · you can cancel at any time</p>
             </div>
           )}
 
           {result && (
             <div>
-              {/* Story summary */}
               {result.summary && (
                 <div className="mb-5 p-4 bg-white rounded-2xl border border-amber-100 shadow-sm">
                   <p className="text-xs font-semibold uppercase tracking-wider text-amber-500 mb-1">
@@ -356,7 +450,6 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Tab switcher */}
               <div className="flex rounded-xl overflow-hidden border border-amber-200 mb-5 w-fit">
                 {([
                   { key: 'characters', label: '👥 Characters' },
