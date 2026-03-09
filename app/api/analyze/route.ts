@@ -8,6 +8,8 @@ const anthropic = new Anthropic();
 
 // How many characters of book text we'll send (fits within most model context windows)
 const MAX_CHARS = 180_000;
+// When truncating, keep this much from the start (character introductions) and the rest from the tail (recent events)
+const HEAD_CHARS = 50_000;
 
 const SYSTEM_PROMPT = `You are a literary companion that helps readers keep track of characters in the book they are currently reading. Your most important rule is NEVER SPOILING anything beyond what appears in the text provided.
 
@@ -59,7 +61,7 @@ Return ONLY a JSON object matching this exact schema (no markdown fences, no exp
 async function callAnthropic(system: string, userPrompt: string): Promise<string> {
   const response = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 4096,
+    max_tokens: 8192,
     system,
     messages: [{ role: 'user', content: userPrompt }],
   });
@@ -78,7 +80,7 @@ async function callLocal(system: string, userPrompt: string): Promise<string> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model,
-      max_tokens: 4096,
+      max_tokens: 8192,
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: userPrompt },
@@ -114,10 +116,12 @@ export async function POST(req: NextRequest) {
       .map((ch) => `=== ${ch.title} ===\n\n${ch.text}`)
       .join('\n\n---\n\n');
 
-    const truncated =
-      fullText.length > MAX_CHARS
-        ? `[Earlier chapters omitted to fit context]\n\n...\n\n${fullText.slice(-MAX_CHARS)}`
-        : fullText;
+    const truncated = (() => {
+      if (fullText.length <= MAX_CHARS) return fullText;
+      const head = fullText.slice(0, HEAD_CHARS);
+      const tail = fullText.slice(-(MAX_CHARS - HEAD_CHARS));
+      return `${head}\n\n[... middle chapters omitted to fit context ...]\n\n${tail}`;
+    })();
 
     const userPrompt = buildUserPrompt(bookTitle, bookAuthor, currentChapterTitle, truncated);
 
