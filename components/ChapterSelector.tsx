@@ -15,6 +15,7 @@ interface Props {
   rebuildProgress: { current: number; total: number } | null;
   canIncrement: boolean;
   lastAnalyzedIndex: number | null;
+  snapshotIndices?: Set<number>;
 }
 
 const BYTES_PER_LOCATION = 128;
@@ -47,6 +48,7 @@ export default function ChapterSelector({
   rebuildProgress,
   canIncrement,
   lastAnalyzedIndex,
+  snapshotIndices,
 }: Props) {
   const [mode, setMode] = useState<'chapter' | 'location'>('chapter');
   const [locationInput, setLocationInput] = useState('');
@@ -195,6 +197,9 @@ export default function ChapterSelector({
         <ul className="space-y-0.5">
           {chapters.map((ch, i) => {
             const isRebuildingThis = rebuilding && rebuildProgress && i === rebuildProgress.current - 1;
+            const hasSnapshot = snapshotIndices?.has(i) ?? false;
+            const isLastAnalyzed = lastAnalyzedIndex !== null && i === lastAnalyzedIndex;
+            const isAnalyzed = lastAnalyzedIndex !== null && i < lastAnalyzedIndex;
             return (
               <li key={ch.id}>
                 <button
@@ -208,7 +213,9 @@ export default function ChapterSelector({
                       ? 'bg-violet-500/10 text-violet-400'
                       : i === currentIndex
                       ? 'bg-zinc-800 text-zinc-100 font-medium'
-                      : lastAnalyzedIndex !== null && i <= lastAnalyzedIndex
+                      : hasSnapshot
+                      ? 'text-amber-600/70 hover:bg-amber-950/30 hover:text-amber-500'
+                      : isAnalyzed || isLastAnalyzed
                       ? 'text-zinc-400 hover:bg-zinc-800/60'
                       : i < currentIndex
                       ? 'text-zinc-500 hover:bg-zinc-800/60'
@@ -216,14 +223,17 @@ export default function ChapterSelector({
                     }
                   `}
                   disabled={i > currentIndex}
+                  title={hasSnapshot ? 'Snapshot saved — click to view' : undefined}
                 >
                   <span className="mr-1.5 text-[10px]">
                     {isRebuildingThis
                       ? '↻'
-                      : lastAnalyzedIndex !== null && i < lastAnalyzedIndex
-                      ? '✓'
-                      : lastAnalyzedIndex !== null && i === lastAnalyzedIndex
+                      : isLastAnalyzed
                       ? '★'
+                      : hasSnapshot
+                      ? '◆'
+                      : isAnalyzed
+                      ? '✓'
                       : i === currentIndex
                       ? '▸'
                       : i < currentIndex
