@@ -23,6 +23,11 @@ STRICT ANTI-SPOILER RULES (follow these without exception):
 5. Do NOT hint at, foreshadow, or allude to future events in any way.
 6. If a character has not appeared yet in the provided text, do NOT include them.
 
+CHARACTER COMPLETENESS RULES:
+- Include EVERY named character who appears in the text, no matter how briefly — protagonists, antagonists, and minor characters alike.
+- A character mentioned once by name still gets an entry.
+- Never filter, skip, or summarize away characters because they seem unimportant.
+
 Your output must be valid JSON and nothing else.`;
 
 const SCHEMA = `{
@@ -52,7 +57,7 @@ function buildFullPrompt(
 ): string {
   return `I am reading "${bookTitle}" by ${bookAuthor}. I have just finished the chapter titled "${currentChapterTitle}".
 
-Below is everything I have read so far. Please analyze it and return a JSON object tracking the characters and story state as I understand them RIGHT NOW — no more, no less.
+Analyze the text below and extract a COMPLETE character roster — every named character who appears, from major protagonists to characters who appear in a single scene. Do not skip anyone because they seem minor.
 
 TEXT I HAVE READ:
 ${text}
@@ -68,22 +73,22 @@ function buildUpdatePrompt(
   previousResult: AnalysisResult,
   newChaptersText: string,
 ): string {
+  const prevCount = previousResult.characters.length;
   return `I am reading "${bookTitle}" by ${bookAuthor}. I have just finished the chapter titled "${currentChapterTitle}".
 
-Here is my existing character tracking state from when I last analyzed earlier chapters:
+EXISTING CHARACTER STATE (${prevCount} characters — you MUST preserve all ${prevCount} of them):
 ${JSON.stringify(previousResult, null, 2)}
 
-Below are the NEW chapters I have read since then. Please UPDATE the character tracking state based only on what is revealed in these new chapters.
-
-Rules for updating:
-- Keep ALL existing characters — do not drop anyone even if they don't appear in the new chapters
-- Update status, currentLocation, recentEvents, relationships only if new chapters reveal changes
-- Add any brand new characters introduced in these chapters
-- Update the summary to reflect the story as of the current chapter
-- Do NOT use any knowledge of this book beyond what is in the text below
-
-NEW CHAPTERS:
+NEW CHAPTER TEXT TO PROCESS:
 ${newChaptersText}
+
+INSTRUCTIONS — THIS IS A MERGE OPERATION, NOT A REWRITE:
+1. Start with the COMPLETE existing character list above. Copy every one of the ${prevCount} characters into your output unchanged unless the new chapter modifies them.
+2. For each character who appears in the new chapter: update only the fields that changed (status, currentLocation, recentEvents, relationships, lastSeen). Keep all other fields as-is.
+3. Add any brand-new named characters introduced in the new chapter.
+4. Update the summary to reflect the story as of the current chapter.
+5. Your output MUST contain at least ${prevCount} characters. If you output fewer than ${prevCount}, you have incorrectly dropped characters.
+6. Do NOT use any knowledge of this book beyond what is in the existing state and the new chapter text above.
 
 Return ONLY the complete updated JSON object (same schema, no markdown fences, no explanation):
 ${SCHEMA}`;
@@ -112,7 +117,7 @@ async function callLocal(system: string, userPrompt: string): Promise<string> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model,
-      max_tokens: 8192,
+      max_tokens: 16384,
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: userPrompt },
@@ -179,7 +184,7 @@ export async function POST(req: NextRequest) {
     // Strip markdown code fences if the model wraps output in them
     const cleaned = raw.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
 
-    let result;
+    let result: AnalysisResult;
     try {
       result = JSON.parse(cleaned);
     } catch {
@@ -187,6 +192,16 @@ export async function POST(req: NextRequest) {
         { error: 'Model returned malformed JSON. Try again.', raw },
         { status: 500 },
       );
+    }
+
+    // Safety net: if the model dropped characters from a previous state, merge them back in
+    if (previousResult && Array.isArray(result.characters) && Array.isArray(previousResult.characters)) {
+      const returnedNames = new Set(result.characters.map((c) => c.name.toLowerCase()));
+      const dropped = previousResult.characters.filter((c) => !returnedNames.has(c.name.toLowerCase()));
+      if (dropped.length > 0) {
+        console.warn(`[analyze] Model dropped ${dropped.length} characters — merging back:`, dropped.map((c) => c.name));
+        result.characters = [...result.characters, ...dropped];
+      }
     }
 
     return NextResponse.json(result);
