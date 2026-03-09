@@ -94,6 +94,62 @@ Return ONLY the complete updated JSON object (same schema, no markdown fences, n
 ${SCHEMA}`;
 }
 
+// Attempt to recover partial/truncated JSON by extracting complete character objects
+function recoverPartialJson(raw: string, previousResult?: AnalysisResult): AnalysisResult | null {
+  try {
+    // Find the characters array start
+    const arrStart = raw.indexOf('"characters"');
+    if (arrStart === -1) return null;
+    const bracketStart = raw.indexOf('[', arrStart);
+    if (bracketStart === -1) return null;
+
+    // Collect complete character objects by scanning for balanced braces
+    const characters: AnalysisResult['characters'] = [];
+    let i = bracketStart + 1;
+    while (i < raw.length) {
+      // Skip whitespace/commas
+      while (i < raw.length && /[\s,]/.test(raw[i])) i++;
+      if (i >= raw.length || raw[i] !== '{') break;
+
+      // Find matching closing brace
+      let depth = 0;
+      let j = i;
+      let inString = false;
+      let escape = false;
+      while (j < raw.length) {
+        const ch = raw[j];
+        if (escape) { escape = false; j++; continue; }
+        if (ch === '\\' && inString) { escape = true; j++; continue; }
+        if (ch === '"') { inString = !inString; j++; continue; }
+        if (!inString) {
+          if (ch === '{') depth++;
+          else if (ch === '}') { depth--; if (depth === 0) { j++; break; } }
+        }
+        j++;
+      }
+      if (depth !== 0) break; // truncated object — stop here
+
+      try {
+        const obj = JSON.parse(raw.slice(i, j));
+        characters.push(obj);
+      } catch { /* skip malformed object */ }
+      i = j;
+    }
+
+    if (characters.length === 0) return null;
+
+    // Extract summary if present
+    const summaryMatch = raw.match(/"summary"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    const summary = summaryMatch
+      ? summaryMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"')
+      : previousResult?.summary ?? '';
+
+    return { characters, summary };
+  } catch {
+    return null;
+  }
+}
+
 // --- Anthropic provider ---
 async function callAnthropic(system: string, userPrompt: string): Promise<string> {
   const response = await anthropic.messages.create({
@@ -117,7 +173,7 @@ async function callLocal(system: string, userPrompt: string): Promise<string> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model,
-      max_tokens: 16384,
+      max_tokens: 32768,
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: userPrompt },
@@ -188,10 +244,17 @@ export async function POST(req: NextRequest) {
     try {
       result = JSON.parse(cleaned);
     } catch {
-      return NextResponse.json(
-        { error: 'Model returned malformed JSON. Try again.', raw },
-        { status: 500 },
-      );
+      // Attempt to recover from truncated JSON by extracting the characters array
+      const recovered = recoverPartialJson(cleaned, previousResult);
+      if (!recovered) {
+        console.error('[analyze] Unrecoverable JSON. Raw length:', cleaned.length, 'Preview:', cleaned.slice(-200));
+        return NextResponse.json(
+          { error: 'Model returned malformed JSON. Try again.' },
+          { status: 500 },
+        );
+      }
+      console.warn('[analyze] Recovered from truncated JSON — kept', recovered.characters.length, 'characters');
+      result = recovered;
     }
 
     // Safety net: if the model dropped characters from a previous state, merge them back in
