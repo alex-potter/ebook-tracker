@@ -64,6 +64,11 @@ function saveStored(title: string, author: string, state: StoredBookState) {
   } catch { /* ignore */ }
 }
 
+function deleteStored(title: string, author: string) {
+  localStorage.removeItem(storageKey(title, author));
+  localStorage.removeItem(mapStorageKey(title, author));
+}
+
 function mapStorageKey(title: string, author: string) {
   return `ebook-tracker-map::${title}::${author}`;
 }
@@ -189,6 +194,7 @@ export default function Home() {
 
   const [uploadTab, setUploadTab] = useState<'file' | 'calibre' | 'mybooks'>('file');
   const [importError, setImportError] = useState<string | null>(null);
+  const [myBooksRev, setMyBooksRev] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
@@ -436,6 +442,7 @@ export default function Home() {
   }
 
   if (!book) {
+    void myBooksRev; // used to trigger re-render after deletion
     const savedBooks = listSavedBooks();
     return (
       <main className="min-h-screen flex flex-col">
@@ -547,6 +554,17 @@ export default function Home() {
                               ↓
                             </button>
                           )}
+                          <button
+                            onClick={() => {
+                              if (!confirm(`Delete all saved data for "${entry.title}"?`)) return;
+                              deleteStored(entry.title, entry.author);
+                              setMyBooksRev((r) => r + 1);
+                            }}
+                            title="Delete saved data"
+                            className="flex-shrink-0 p-2 text-zinc-700 hover:text-red-400 transition-colors"
+                          >
+                            ✕
+                          </button>
                         </li>
                       );
                     })}
