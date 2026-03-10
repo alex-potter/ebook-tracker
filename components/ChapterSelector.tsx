@@ -62,6 +62,8 @@ function ChapterItem({
   const isLastAnalyzed = lastAnalyzedIndex !== null && globalIndex === lastAnalyzedIndex;
   const isAnalyzed = lastAnalyzedIndex !== null && globalIndex < lastAnalyzedIndex;
   const isCurrent = globalIndex === currentIndex;
+  // Chapters up to the furthest point the user has reached (read or analyzed) are navigable
+  const frontier = Math.max(currentIndex, lastAnalyzedIndex ?? -1);
 
   const marker = isExcluded ? '✗'
     : isRebuildingThis ? '↻'
@@ -77,7 +79,7 @@ function ChapterItem({
     : isCurrent ? 'bg-zinc-800 text-zinc-100 font-medium'
     : hasSnapshot ? 'text-amber-600/70 hover:bg-amber-950/30 hover:text-amber-500'
     : isAnalyzed || isLastAnalyzed ? 'text-zinc-400 hover:bg-zinc-800/60'
-    : globalIndex < currentIndex ? 'text-zinc-500 hover:bg-zinc-800/60'
+    : globalIndex <= frontier ? 'text-zinc-500 hover:bg-zinc-800/60'
     : 'text-zinc-700 cursor-default';
 
   return (
@@ -86,7 +88,7 @@ function ChapterItem({
         onChange(globalIndex);
         if (mode === 'location') setLocationInput(String(chapterIndexToLocation(globalIndex, chapters)));
       }}
-      disabled={globalIndex > currentIndex || isExcluded}
+      disabled={globalIndex > frontier || isExcluded}
       title={hasSnapshot ? 'Snapshot saved' : undefined}
       className={`w-full text-left px-2.5 py-1.5 rounded-md text-xs transition-colors ${color}`}
     >
