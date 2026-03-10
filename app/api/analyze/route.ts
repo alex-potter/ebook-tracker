@@ -141,6 +141,48 @@ Return ONLY a JSON object with "updatedCharacters", "updatedLocations", and "sum
 ${DELTA_SCHEMA}`;
 }
 
+function normLoc(name: string): string {
+  return name.toLowerCase()
+    .replace(/^(the|a|an)\s+/, '')
+    .split(',')[0].trim()
+    .split(/\s+/).sort().join(' ');
+}
+
+/** Deduplicate locations, merging prefix-word subsets ("Eros" → "Eros Station"). */
+function deduplicateLocations(locs: AnalysisResult['locations']): AnalysisResult['locations'] {
+  if (!locs?.length) return locs;
+  // Group by normalised key
+  const groups = new Map<string, { canonical: string; description: string }>();
+  for (const loc of locs) {
+    const key = normLoc(loc.name);
+    const existing = groups.get(key);
+    if (existing) {
+      // Keep longer description, prefer longer raw name
+      if (loc.name.length > existing.canonical.length) existing.canonical = loc.name;
+      if (loc.description.length > existing.description.length) existing.description = loc.description;
+    } else {
+      groups.set(key, { canonical: loc.name, description: loc.description });
+    }
+  }
+  // Merge prefix-word subsets: "eros" merges into "eros station"
+  const keys = [...groups.keys()];
+  for (const shorter of keys) {
+    if (!groups.has(shorter)) continue;
+    for (const longer of keys) {
+      if (shorter === longer || !groups.has(longer)) continue;
+      if (longer.startsWith(shorter + ' ')) {
+        const gs = groups.get(shorter)!;
+        const gl = groups.get(longer)!;
+        if (gs.canonical.length > gl.canonical.length) gl.canonical = gs.canonical;
+        if (gs.description.length > gl.description.length) gl.description = gs.description;
+        groups.delete(shorter);
+        break;
+      }
+    }
+  }
+  return [...groups.values()].map(({ canonical, description }) => ({ name: canonical, description }));
+}
+
 /** Merge characters that share a name/alias so nicknames don't create duplicate entries. */
 function deduplicateCharacters(chars: AnalysisResult['characters']): AnalysisResult['characters'] {
   const norm = (s: string) => s.toLowerCase().trim();
@@ -402,7 +444,7 @@ export async function POST(req: NextRequest) {
       result = parsed as unknown as AnalysisResult;
     }
 
-    result = { ...result, characters: deduplicateCharacters(result.characters) };
+    result = { ...result, characters: deduplicateCharacters(result.characters), locations: deduplicateLocations(result.locations) };
     return NextResponse.json(result);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';

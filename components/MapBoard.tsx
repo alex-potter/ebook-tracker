@@ -73,6 +73,26 @@ function buildLocationMap(characters: Character[]): Map<string, Character[]> {
     }
   }
 
+  // Merge prefix-word subsets: "Eros" (key:"eros") merges into "Eros Station" (key:"eros station")
+  // Keep the more specific (longer) canonical name.
+  const keys = [...groups.keys()];
+  for (const shorter of keys) {
+    if (!groups.has(shorter)) continue;
+    for (const longer of keys) {
+      if (shorter === longer || !groups.has(longer)) continue;
+      if (longer.startsWith(shorter + ' ')) {
+        // shorter is a prefix-word subset of longer — merge shorter into longer
+        const gs = groups.get(shorter)!;
+        const gl = groups.get(longer)!;
+        gl.chars.push(...gs.chars);
+        // canonical: prefer the longer (more specific) raw name
+        if (gs.canonical.length > gl.canonical.length) gl.canonical = gs.canonical;
+        groups.delete(shorter);
+        break;
+      }
+    }
+  }
+
   const result = new Map<string, Character[]>();
   for (const { canonical, chars } of groups.values()) result.set(canonical, chars);
   return new Map([...result.entries()].sort((a, b) => b[1].length - a[1].length));
