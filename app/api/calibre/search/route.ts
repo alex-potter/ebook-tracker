@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-export const dynamic = 'force-dynamic';
+import type { CalibreBook } from '@/types';
 
 interface CalibreBookRaw {
   title: string;
@@ -12,15 +11,7 @@ interface CalibreBookRaw {
   tags: string[];
 }
 
-export interface CalibreBook {
-  id: number;
-  title: string;
-  authors: string[];
-  series: string | null;
-  seriesIndex: number | null;
-  formats: string[];
-  hasCover: boolean;
-}
+export type { CalibreBook };
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;

@@ -1,3 +1,13 @@
+export interface CalibreBook {
+  id: number;
+  title: string;
+  authors: string[];
+  series: string | null;
+  seriesIndex: number | null;
+  formats: string[];
+  hasCover: boolean;
+}
+
 export interface EbookChapter {
   id: string;
   title: string;

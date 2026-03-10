@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import type { LocationPin } from '@/types';
 
-export const maxDuration = 60;
-export const dynamic = 'force-dynamic';
 
 const SUPPORTED_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 

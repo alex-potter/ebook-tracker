@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "build:mobile": "cross-env NEXT_PUBLIC_MOBILE=true next build",
+    "build:mobile": "node scripts/mobile-build.js",
     "cap:sync": "npm run build:mobile && npx cap sync",
     "cap:android": "npm run build:mobile && npx cap sync && npx cap open android"
   },

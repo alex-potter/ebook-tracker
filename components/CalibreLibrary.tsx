@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CalibreBook } from '@/app/api/calibre/search/route';
+import type { CalibreBook } from '@/types';
 
 interface Props {
   onFile: (file: File) => void;

@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import type { AnalysisResult } from '@/types';
 
-export const maxDuration = 120; // seconds
-export const dynamic = 'force-dynamic';
 
 const anthropic = new Anthropic();
 
