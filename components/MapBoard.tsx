@@ -20,7 +20,6 @@ function initials(name: string): string {
   return name.split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('');
 }
 
-/** Derive unique locations → characters map, sorted by population */
 function buildLocationMap(characters: Character[]): Map<string, Character[]> {
   const map = new Map<string, Character[]>();
   for (const ch of characters) {
@@ -36,6 +35,12 @@ export default function MapBoard({ characters, mapState, onMapStateChange }: Pro
   const [placingLocation, setPlacingLocation] = useState<string | null>(null);
   const [activePin, setActivePin] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+
+  // Auto-detect state
+  const [detecting, setDetecting] = useState(false);
+  const [detectError, setDetectError] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<Record<string, LocationPin> | null>(null); // null = no pending review
+
   const mapRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -43,9 +48,11 @@ export default function MapBoard({ characters, mapState, onMapStateChange }: Pro
   const locations = [...locationMap.entries()];
   const pinnedCount = mapState ? Object.keys(mapState.pins).length : 0;
 
-  // ESC cancels placement mode
+  // ESC cancels placement mode / closes suggestions
   useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setPlacingLocation(null); }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') { setPlacingLocation(null); setSuggestions(null); }
+    }
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, []);
@@ -64,6 +71,7 @@ export default function MapBoard({ characters, mapState, onMapStateChange }: Pro
     reader.onload = (e) => {
       const dataUrl = e.target?.result as string;
       onMapStateChange({ imageDataUrl: dataUrl, pins: mapState?.pins ?? {} });
+      setSuggestions(null);
     };
     reader.readAsDataURL(file);
   }
@@ -94,7 +102,57 @@ export default function MapBoard({ characters, mapState, onMapStateChange }: Pro
     onMapStateChange({ imageDataUrl: mapState.imageDataUrl, pins });
   }
 
-  // ── Upload prompt ────────────────────────────────────────────────────────────
+  async function handleAutoDetect() {
+    if (!mapState || !locations.length) return;
+    setDetecting(true);
+    setDetectError(null);
+    setSuggestions(null);
+    try {
+      const res = await fetch('/api/detect-pins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageDataUrl: mapState.imageDataUrl,
+          locations: locations.map(([name]) => name),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Detection failed');
+      const found: Record<string, LocationPin> = data.pins ?? {};
+      if (Object.keys(found).length === 0) {
+        setDetectError('No location labels found on the map. Try placing pins manually.');
+      } else {
+        setSuggestions(found);
+      }
+    } catch (err) {
+      setDetectError(err instanceof Error ? err.message : 'Detection failed');
+    } finally {
+      setDetecting(false);
+    }
+  }
+
+  function acceptSuggestion(name: string) {
+    if (!mapState || !suggestions) return;
+    onMapStateChange({ imageDataUrl: mapState.imageDataUrl, pins: { ...mapState.pins, [name]: suggestions[name] } });
+    const remaining = { ...suggestions };
+    delete remaining[name];
+    setSuggestions(Object.keys(remaining).length ? remaining : null);
+  }
+
+  function acceptAllSuggestions() {
+    if (!mapState || !suggestions) return;
+    onMapStateChange({ imageDataUrl: mapState.imageDataUrl, pins: { ...mapState.pins, ...suggestions } });
+    setSuggestions(null);
+  }
+
+  function dismissSuggestion(name: string) {
+    if (!suggestions) return;
+    const remaining = { ...suggestions };
+    delete remaining[name];
+    setSuggestions(Object.keys(remaining).length ? remaining : null);
+  }
+
+  // ── Upload prompt ─────────────────────────────────────────────────────────────
   if (!mapState) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-6 py-16">
@@ -117,27 +175,47 @@ export default function MapBoard({ characters, mapState, onMapStateChange }: Pro
           <span className="text-2xl opacity-40">↑</span>
           <p className="text-xs text-zinc-500">Drag & drop or click to browse</p>
         </div>
-        <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageFile(f); }} />
+        <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageFile(f); }} />
       </div>
     );
   }
 
-  // ── Map view ─────────────────────────────────────────────────────────────────
+  // ── Map view ──────────────────────────────────────────────────────────────────
   const pins = mapState.pins;
+  const suggestionCount = suggestions ? Object.keys(suggestions).length : 0;
+  const unplacedLocations = locations.filter(([name]) => !pins[name] && !suggestions?.[name]);
 
   return (
     <div className="flex gap-4 h-full min-h-0">
       {/* Map area */}
       <div className="flex-1 min-w-0 flex flex-col gap-2">
         {/* Toolbar */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-shrink-0">
           <p className="text-xs text-zinc-600">
             {pinnedCount} of {locations.length} locations pinned
           </p>
           <div className="flex-1" />
           {placingLocation && (
             <span className="text-xs text-amber-400 font-medium animate-pulse">
-              Click map to place "{placingLocation}"
+              Click map to place "{placingLocation}" · ESC to cancel
+            </span>
+          )}
+          {detectError && (
+            <span className="text-xs text-red-500">{detectError}</span>
+          )}
+          {locations.length > 0 && !detecting && !placingLocation && (
+            <button
+              onClick={handleAutoDetect}
+              className="text-xs px-2.5 py-1 rounded-lg border border-violet-700/50 text-violet-400 hover:bg-violet-500/10 hover:border-violet-600 transition-colors font-medium"
+            >
+              ✦ Auto-detect
+            </button>
+          )}
+          {detecting && (
+            <span className="flex items-center gap-1.5 text-xs text-violet-400">
+              <span className="w-3 h-3 border border-violet-500 border-t-transparent rounded-full animate-spin" />
+              Scanning map…
             </span>
           )}
           <button
@@ -146,8 +224,30 @@ export default function MapBoard({ characters, mapState, onMapStateChange }: Pro
           >
             Replace map
           </button>
-          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageFile(f); }} />
+          <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageFile(f); }} />
         </div>
+
+        {/* Suggestions banner */}
+        {suggestions && suggestionCount > 0 && (
+          <div className="flex-shrink-0 flex items-center gap-3 px-3 py-2 bg-violet-500/10 border border-violet-500/20 rounded-xl">
+            <span className="text-xs text-violet-300 font-medium">
+              ✦ {suggestionCount} location{suggestionCount !== 1 ? 's' : ''} detected
+            </span>
+            <button
+              onClick={acceptAllSuggestions}
+              className="text-xs px-2.5 py-1 rounded-lg bg-violet-500 text-white font-medium hover:bg-violet-400 transition-colors"
+            >
+              Accept all
+            </button>
+            <button
+              onClick={() => setSuggestions(null)}
+              className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors ml-auto"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {/* Map + pins */}
         <div
@@ -162,12 +262,11 @@ export default function MapBoard({ characters, mapState, onMapStateChange }: Pro
             <div className="absolute inset-0 bg-amber-500/5 border-2 border-amber-500/30 border-dashed pointer-events-none" />
           )}
 
-          {/* Pins */}
+          {/* Accepted pins */}
           {Object.entries(pins).map(([location, { x, y }]) => {
             const chars = locationMap.get(location) ?? [];
             const color = pinColor(location);
             const isActive = activePin === location;
-
             return (
               <div
                 key={location}
@@ -175,24 +274,16 @@ export default function MapBoard({ characters, mapState, onMapStateChange }: Pro
                 className="z-10"
                 onClick={(e) => { e.stopPropagation(); setActivePin(isActive ? null : location); }}
               >
-                {/* Pin marker */}
                 <div className="relative -translate-x-1/2 -translate-y-full flex flex-col items-center" style={{ pointerEvents: 'all' }}>
-                  {/* Label */}
                   <div
                     className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white shadow-lg whitespace-nowrap cursor-pointer hover:brightness-110 transition-all"
                     style={{ backgroundColor: color, boxShadow: `0 2px 8px ${color}60` }}
                   >
-                    {location}
-                    {chars.length > 0 && (
-                      <span className="ml-1 opacity-75">· {chars.length}</span>
-                    )}
+                    {location}{chars.length > 0 && <span className="ml-1 opacity-75">· {chars.length}</span>}
                   </div>
-                  {/* Stem */}
                   <div className="w-px h-2.5" style={{ backgroundColor: color }} />
-                  {/* Dot */}
                   <div className="w-2 h-2 rounded-full border-2 border-white/50" style={{ backgroundColor: color }} />
 
-                  {/* Popup */}
                   {isActive && (
                     <div
                       className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl p-3 min-w-44 z-20"
@@ -204,9 +295,7 @@ export default function MapBoard({ characters, mapState, onMapStateChange }: Pro
                           onClick={() => { removePin(location); setActivePin(null); }}
                           className="text-[10px] text-zinc-700 hover:text-red-500 transition-colors ml-2"
                           title="Remove pin"
-                        >
-                          ✕
-                        </button>
+                        >✕</button>
                       </div>
                       {chars.length === 0 ? (
                         <p className="text-xs text-zinc-600">No characters here</p>
@@ -219,9 +308,7 @@ export default function MapBoard({ characters, mapState, onMapStateChange }: Pro
                               </div>
                               <div className="min-w-0">
                                 <p className="text-xs text-zinc-200 font-medium truncate">{ch.name}</p>
-                                {ch.importance === 'main' && (
-                                  <p className="text-[9px] text-amber-500/70">main</p>
-                                )}
+                                {ch.importance === 'main' && <p className="text-[9px] text-amber-500/70">main</p>}
                               </div>
                             </li>
                           ))}
@@ -239,12 +326,63 @@ export default function MapBoard({ characters, mapState, onMapStateChange }: Pro
               </div>
             );
           })}
+
+          {/* Suggestion ghost pins */}
+          {suggestions && Object.entries(suggestions).map(([location, { x, y }]) => (
+            <div
+              key={`suggestion-${location}`}
+              style={{ position: 'absolute', left: `${x}%`, top: `${y}%` }}
+              className="z-10"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="relative -translate-x-1/2 -translate-y-full flex flex-col items-center pointer-events-all">
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold text-violet-300 whitespace-nowrap border border-dashed border-violet-500/60 bg-zinc-900/80 shadow-lg">
+                  <span className="opacity-60">✦</span>
+                  {location}
+                  <button
+                    onClick={() => acceptSuggestion(location)}
+                    className="ml-1 text-violet-300 hover:text-white transition-colors"
+                    title="Accept"
+                  >✓</button>
+                  <button
+                    onClick={() => dismissSuggestion(location)}
+                    className="text-zinc-600 hover:text-red-400 transition-colors"
+                    title="Dismiss"
+                  >✕</button>
+                </div>
+                <div className="w-px h-2.5 bg-violet-500/50 border-dashed" />
+                <div className="w-2 h-2 rounded-full border-2 border-dashed border-violet-500/60 bg-violet-500/20" />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
       {/* Location sidebar */}
       <div className="w-52 flex-shrink-0 flex flex-col min-h-0">
-        <p className="text-xs font-medium text-zinc-600 uppercase tracking-wider mb-3">Locations</p>
+        {/* Suggestions review list */}
+        {suggestions && suggestionCount > 0 && (
+          <div className="mb-4 flex-shrink-0">
+            <p className="text-xs font-medium text-violet-400 uppercase tracking-wider mb-2">Detected</p>
+            <ul className="space-y-1">
+              {Object.entries(suggestions).map(([name]) => {
+                const color = pinColor(name);
+                return (
+                  <li key={name} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-violet-500/20 bg-violet-500/5">
+                    <span className="text-[8px]" style={{ color }}>●</span>
+                    <span className="flex-1 text-xs text-violet-300 truncate">{name}</span>
+                    <button onClick={() => acceptSuggestion(name)} className="text-[10px] text-zinc-500 hover:text-violet-300 transition-colors" title="Accept">✓</button>
+                    <button onClick={() => dismissSuggestion(name)} className="text-[10px] text-zinc-700 hover:text-red-400 transition-colors" title="Dismiss">✕</button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
+        <p className="text-xs font-medium text-zinc-600 uppercase tracking-wider mb-2 flex-shrink-0">
+          {unplacedLocations.length > 0 ? `Unplaced (${unplacedLocations.length})` : 'Locations'}
+        </p>
 
         {locations.length === 0 ? (
           <p className="text-xs text-zinc-700">No locations found — analyze a chapter first.</p>
@@ -252,15 +390,19 @@ export default function MapBoard({ characters, mapState, onMapStateChange }: Pro
           <ul className="space-y-1 overflow-y-auto flex-1">
             {locations.map(([name, chars]) => {
               const pin = pins[name];
+              const isSuggested = !!suggestions?.[name];
               const isPlacing = placingLocation === name;
               const color = pinColor(name);
+              if (pin && !suggestions) return null; // hide already-pinned when not reviewing
 
               return (
                 <li key={name}>
                   <button
-                    onClick={() => setPlacingLocation(isPlacing ? null : name)}
+                    onClick={() => !isSuggested && setPlacingLocation(isPlacing ? null : name)}
                     className={`w-full text-left px-2.5 py-2 rounded-lg text-xs transition-colors border ${
-                      isPlacing
+                      isSuggested
+                        ? 'border-violet-500/20 bg-violet-500/5 text-violet-400 cursor-default'
+                        : isPlacing
                         ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
                         : pin
                         ? 'border-zinc-800 bg-zinc-800/20 text-zinc-300 hover:border-zinc-700'
@@ -268,13 +410,34 @@ export default function MapBoard({ characters, mapState, onMapStateChange }: Pro
                     }`}
                   >
                     <div className="flex items-center gap-2">
+                      <span className="flex-shrink-0 text-[8px]" style={{ color }}>
+                        {isSuggested ? '✦' : '●'}
+                      </span>
+                      <span className="flex-1 truncate font-medium">{name}</span>
+                      <span className="flex-shrink-0 text-zinc-600">{chars.length}</span>
+                    </div>
+                    <p className="text-[10px] mt-0.5 ml-3.5 text-zinc-700">
+                      {isSuggested ? 'Detected — accept or dismiss' : isPlacing ? 'Click map to place…' : pin ? 'Pinned · click to move' : 'Click to place'}
+                    </p>
+                  </button>
+                </li>
+              );
+            })}
+            {/* Show pinned locations at bottom when not reviewing */}
+            {!suggestions && locations.filter(([n]) => pins[n]).map(([name, chars]) => {
+              const color = pinColor(name);
+              return (
+                <li key={`pinned-${name}`}>
+                  <button
+                    onClick={() => setPlacingLocation(placingLocation === name ? null : name)}
+                    className="w-full text-left px-2.5 py-2 rounded-lg text-xs border border-zinc-800 bg-zinc-800/20 text-zinc-400 hover:border-zinc-700 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
                       <span className="flex-shrink-0 text-[8px]" style={{ color }}>●</span>
                       <span className="flex-1 truncate font-medium">{name}</span>
                       <span className="flex-shrink-0 text-zinc-600">{chars.length}</span>
                     </div>
-                    <p className="text-[10px] mt-0.5 ml-3.5" style={{ color: isPlacing ? undefined : pin ? '#52525b' : '#3f3f46' }}>
-                      {isPlacing ? 'Click map to place…' : pin ? 'Pinned · click to move' : 'Click to place'}
-                    </p>
+                    <p className="text-[10px] mt-0.5 ml-3.5 text-zinc-700">Pinned · click to move</p>
                   </button>
                 </li>
               );
@@ -282,10 +445,9 @@ export default function MapBoard({ characters, mapState, onMapStateChange }: Pro
           </ul>
         )}
 
-        {/* Legend */}
-        {pinnedCount > 0 && (
-          <div className="mt-4 pt-3 border-t border-zinc-800">
-            <p className="text-[10px] text-zinc-700 mb-1">Click a pin on the map to see characters. ESC cancels placement.</p>
+        {pinnedCount > 0 && !suggestions && (
+          <div className="mt-4 pt-3 border-t border-zinc-800 flex-shrink-0">
+            <p className="text-[10px] text-zinc-700">Click a pin to see characters. ESC cancels placement.</p>
           </div>
         )}
       </div>
