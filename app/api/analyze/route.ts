@@ -45,7 +45,7 @@ const SCHEMA = `{
       "importance": "main" | "secondary" | "minor",
       "status": "alive" | "dead" | "unknown" | "uncertain",
       "lastSeen": "Chapter title where they last appeared",
-      "currentLocation": "Last known location, or 'Unknown'",
+      "currentLocation": "Proper place name (city/station/planet/region) — no parentheticals or activity descriptions. Use 'Unknown' if unclear.",
       "description": "1–2 sentence description of who they are, their role, and appearance/personality as established so far",
       "relationships": [
         { "character": "Other character's name", "relationship": "How they relate" }
@@ -55,7 +55,7 @@ const SCHEMA = `{
   ],
   "locations": [
     {
-      "name": "Location name (must match a currentLocation value used above)",
+      "name": "Proper place name only — a city, station, planet, region, or named landmark (NOT a generic room, corridor, or activity description)",
       "description": "1–2 sentence description of this place — what kind of place it is, its significance, atmosphere, or notable features as established in the text"
     }
   ],
@@ -95,7 +95,7 @@ const DELTA_SCHEMA = `{
       "importance": "main" | "secondary" | "minor",
       "status": "alive" | "dead" | "unknown" | "uncertain",
       "lastSeen": "Chapter title where they last appeared",
-      "currentLocation": "Last known location, or 'Unknown'",
+      "currentLocation": "Proper place name (city/station/planet/region) — no parentheticals or activity descriptions. Use 'Unknown' if unclear.",
       "description": "1–2 sentence description (carry forward from existing state if unchanged)",
       "relationships": [
         { "character": "Other character's name", "relationship": "How they relate" }
@@ -105,7 +105,7 @@ const DELTA_SCHEMA = `{
   ],
   "updatedLocations": [
     {
-      "name": "Location name",
+      "name": "Proper place name only — a city, station, planet, region, or named landmark (NOT a generic room, corridor, or activity description)",
       "description": "1–2 sentence description of this place as revealed so far"
     }
   ],
@@ -133,7 +133,7 @@ INSTRUCTIONS — RETURN ONLY CHANGES, NOT THE FULL LIST:
 2. For each character who APPEARS in the new chapter: include them in "updatedCharacters" with updated fields (status, currentLocation, recentEvents, lastSeen). Keep description/relationships from existing state unless the chapter changes them.
 3. For any BRAND NEW named character introduced in this chapter: include them in "updatedCharacters" with all fields filled in.
 4. Do NOT include characters from the existing list who do not appear in the new chapter.
-5. For any location that appears or is described in this chapter: include it in "updatedLocations" with a 1–2 sentence description. Only include locations with meaningful descriptions; omit vague or unnamed places.
+5. For significant named places (cities, stations, planets, regions, named landmarks) that appear in this chapter: include them in "updatedLocations". Do NOT include generic rooms, corridors, vehicle interiors, or vague descriptions — only real proper-noun locations.
 6. Update the summary to reflect the story as of the current chapter.
 7. Do NOT use any knowledge of this book beyond what is listed above and the new chapter text.
 
