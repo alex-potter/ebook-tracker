@@ -161,10 +161,10 @@ function listSavedBooks(excludeTitle?: string, excludeAuthor?: string): SavedBoo
 
 const IS_MOBILE = process.env.NEXT_PUBLIC_MOBILE === 'true';
 
-const FRONT_MATTER_RE = /^\s*(acknowledgements?|acknowledgments?|foreword|fore\s*word|preface|introduction|dedication|about\s+the\s+author|author'?s?\s+note|note\s+(from|by)\s+the\s+author|prologue\s*$|copyright|contents|table\s+of\s+contents|cast\s+of\s+characters|dramatis\s+personae|maps?)\s*$/i;
+const FRONT_MATTER_RE = /^\s*(acknowledgements?|acknowledgments?|foreword|fore\s*word|preface|introduction|dedication|about\s+the\s+author|author'?s?\s+note|note\s+(from|by)\s+the\s+author|prologue\s*$|copyright|contents|table\s+of\s+contents|cast\s+of\s+characters|dramatis\s+personae|maps?|part\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|i{1,3}|iv|vi{0,3}|ix))\s*$/i;
 
 function isFrontMatter(ch: { title: string; text: string }): boolean {
-  return FRONT_MATTER_RE.test(ch.title) || ch.text.trim().length < 200;
+  return FRONT_MATTER_RE.test(ch.title) || ch.text.trim().length < 500;
 }
 
 async function analyzeChapter(
