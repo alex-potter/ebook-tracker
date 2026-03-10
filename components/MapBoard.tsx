@@ -78,9 +78,25 @@ function buildLocationMap(characters: Character[]): Map<string, Character[]> {
   return new Map([...result.entries()].sort((a, b) => b[1].length - a[1].length));
 }
 
+function clusterOffsets(count: number): { dx: number; dy: number }[] {
+  if (count === 0) return [];
+  if (count === 1) return [{ dx: 0, dy: 0 }];
+  const radius = Math.min(2.5 + count * 0.4, 6);
+  return Array.from({ length: count }, (_, i) => {
+    const angle = (i / count) * 2 * Math.PI - Math.PI / 2;
+    return { dx: Math.cos(angle) * radius, dy: Math.sin(angle) * radius * 1.4 };
+  });
+}
+
+function charImportanceColor(importance: Character['importance']): string {
+  return importance === 'main' ? '#f59e0b' : importance === 'secondary' ? '#3b82f6' : '#71717a';
+}
+
 export default function MapBoard({ characters, bookTitle, mapState, onMapStateChange }: Props) {
   const [placingLocation, setPlacingLocation] = useState<string | null>(null);
   const [activePin, setActivePin] = useState<string | null>(null);
+  const [activeCharPin, setActiveCharPin] = useState<string | null>(null);
+  const [charMode, setCharMode] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadTab, setUploadTab] = useState<'drop' | 'url'>('drop');
   const [urlInput, setUrlInput] = useState('');
@@ -190,6 +206,7 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
 
   function handleMapClick(e: React.MouseEvent<HTMLDivElement>) {
     if (wasDraggingRef.current) { wasDraggingRef.current = false; return; }
+    setActiveCharPin(null);
     if (!placingLocation || !mapRef.current || !mapState) return;
     const rect = mapRef.current.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 100;
@@ -368,6 +385,14 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
           <p className="text-xs text-zinc-600">
             {pinnedCount} of {locations.length} locations pinned
           </p>
+          {pinnedCount > 0 && (
+            <button
+              onClick={() => { setCharMode(m => !m); setActivePin(null); setActiveCharPin(null); }}
+              className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${charMode ? 'border-amber-600/60 text-amber-400 bg-amber-500/10' : 'border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600'}`}
+            >
+              {charMode ? 'Character pins' : 'Location pins'}
+            </button>
+          )}
           <div className="flex-1" />
           {placingLocation && (
             <span className="text-xs text-amber-400 font-medium animate-pulse">
@@ -458,8 +483,63 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
             <div className="absolute inset-0 bg-amber-500/5 border-2 border-amber-500/30 border-dashed pointer-events-none" />
           )}
 
+          {/* Character cluster pins (char mode) */}
+          {charMode && Object.entries(pins).map(([location, pinPos]) => {
+            const { x, y } = pinPos;
+            const chars = locationMap.get(location) ?? [];
+            if (chars.length === 0) return null;
+            const offsets = clusterOffsets(chars.length);
+            const locColor = pinColor(location);
+            return (
+              <div key={`cluster-${location}`}>
+                {/* Faint location dot as anchor */}
+                <div style={{ position: 'absolute', left: `${x}%`, top: `${y}%` }} className="z-5 pointer-events-none">
+                  <div className="w-3 h-3 rounded-full -translate-x-1/2 -translate-y-1/2 border border-white/20" style={{ backgroundColor: `${locColor}40` }} />
+                </div>
+                {chars.map((char, i) => {
+                  const px = Math.max(0, Math.min(100, x + offsets[i].dx));
+                  const py = Math.max(0, Math.min(100, y + offsets[i].dy));
+                  const color = charImportanceColor(char.importance);
+                  const isActive = activeCharPin === char.name;
+                  return (
+                    <div
+                      key={char.name}
+                      style={{ position: 'absolute', left: `${px}%`, top: `${py}%` }}
+                      className="z-10"
+                      onClick={(e) => { e.stopPropagation(); setActiveCharPin(isActive ? null : char.name); }}
+                    >
+                      <div className="relative -translate-x-1/2 -translate-y-1/2" style={{ pointerEvents: 'all' }}>
+                        <div
+                          title={char.name}
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-bold text-white cursor-pointer shadow-md hover:scale-110 transition-transform border-2 border-zinc-900"
+                          style={{ backgroundColor: color }}
+                        >
+                          {initials(char.name)}
+                        </div>
+                        {isActive && (
+                          <div
+                            className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl p-3 min-w-44 z-20 pointer-events-auto"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              <div className="w-5 h-5 rounded-md flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0" style={{ backgroundColor: color }}>{initials(char.name)}</div>
+                              <p className="text-xs text-zinc-200 font-semibold truncate">{char.name}</p>
+                            </div>
+                            <p className="text-[10px] text-zinc-500">{char.importance} · {char.status}</p>
+                            <p className="text-[10px] text-zinc-600 mt-1 truncate">{location}</p>
+                            {char.recentEvents && <p className="text-[10px] text-zinc-500 mt-1 line-clamp-2">{char.recentEvents}</p>}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+
           {/* Accepted pins */}
-          {Object.entries(pins).map(([location, pinPos]) => {
+          {!charMode && Object.entries(pins).map(([location, pinPos]) => {
             const { x, y } = dragState?.name === location ? dragState : pinPos;
             const chars = locationMap.get(location) ?? [];
             const color = pinColor(location);
@@ -530,7 +610,7 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
           })}
 
           {/* Suggestion ghost pins */}
-          {suggestions && Object.entries(suggestions).map(([location, { x, y }]) => (
+          {!charMode && suggestions && Object.entries(suggestions).map(([location, { x, y }]) => (
             <div
               key={`suggestion-${location}`}
               style={{ position: 'absolute', left: `${x}%`, top: `${y}%` }}
