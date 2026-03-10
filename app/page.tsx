@@ -161,6 +161,12 @@ function listSavedBooks(excludeTitle?: string, excludeAuthor?: string): SavedBoo
 
 const IS_MOBILE = process.env.NEXT_PUBLIC_MOBILE === 'true';
 
+const FRONT_MATTER_RE = /^\s*(acknowledgements?|acknowledgments?|foreword|fore\s*word|preface|introduction|dedication|about\s+the\s+author|author'?s?\s+note|note\s+(from|by)\s+the\s+author|prologue\s*$|copyright|contents|table\s+of\s+contents|cast\s+of\s+characters|dramatis\s+personae|maps?)\s*$/i;
+
+function isFrontMatter(ch: { title: string; text: string }): boolean {
+  return FRONT_MATTER_RE.test(ch.title) || ch.text.trim().length < 200;
+}
+
 async function analyzeChapter(
   bookTitle: string,
   bookAuthor: string,
@@ -427,8 +433,7 @@ export default function Home() {
         setRebuildProgress({ current: i - startIndex + 1, total });
         const ch = book.chapters[i];
         if (ch.bookIndex !== undefined && excludedBooks.has(ch.bookIndex)) continue;
-        // Skip structural dividers (part headers, etc.) with very little text
-        if (ch.text.trim().length < 200 && accumulated) {
+        if (isFrontMatter(ch) && accumulated) {
           snapshots = upsertSnapshot(snapshots, i, accumulated);
           const partial: StoredBookState = { lastAnalyzedIndex: i, result: accumulated, snapshots };
           storedRef.current = partial;
@@ -468,7 +473,7 @@ export default function Home() {
         setRebuildProgress({ current: i + 1, total: currentIndex + 1 });
         const ch = book.chapters[i];
         if (ch.bookIndex !== undefined && excludedBooks.has(ch.bookIndex)) continue;
-        if (ch.text.trim().length < 200 && accumulated) {
+        if (isFrontMatter(ch) && accumulated) {
           snapshots = upsertSnapshot(snapshots, i, accumulated);
           const partial: StoredBookState = { lastAnalyzedIndex: i, result: accumulated, snapshots };
           storedRef.current = partial;
