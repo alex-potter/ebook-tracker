@@ -352,6 +352,14 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
               Scanning map…
             </span>
           )}
+          {pinnedCount > 0 && !placingLocation && (
+            <button
+              onClick={() => { if (confirm('Clear all pin placements?')) onMapStateChange({ ...mapState, pins: {} }); }}
+              className="text-xs text-zinc-600 hover:text-red-400 transition-colors"
+            >
+              Clear pins
+            </button>
+          )}
           <button
             onClick={() => fileInputRef.current?.click()}
             className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
