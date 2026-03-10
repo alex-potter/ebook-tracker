@@ -29,13 +29,15 @@ const BYTES_PER_LOCATION = 128;
 const LOWERCASE_WORDS = new Set(['a', 'an', 'the', 'and', 'but', 'or', 'for', 'nor',
   'on', 'at', 'to', 'by', 'in', 'of', 'up', 'as', 'vs', 'via']);
 
-/** Normalise a chapter title: apply title case if the string is all-upper or all-lower. */
+/** Normalise a chapter title to title case when it is predominantly uppercase. */
 function normalizeTitle(raw: string): string {
   const t = raw.trim();
-  const lower = t.toLowerCase();
-  const upper = t.toUpperCase();
-  if (t !== lower && t !== upper) return t; // already mixed case — leave it
-  return lower.replace(/\b\w+/g, (word, offset) => {
+  const letters = t.replace(/[^a-zA-Z]/g, '');
+  if (letters.length === 0) return t;
+  const upperRatio = (letters.match(/[A-Z]/g) ?? []).length / letters.length;
+  // Leave titles that are already mostly lowercase (proper mixed case)
+  if (upperRatio < 0.5) return t;
+  return t.toLowerCase().replace(/\b\w+/g, (word, offset) => {
     if (offset > 0 && LOWERCASE_WORDS.has(word)) return word;
     return word.charAt(0).toUpperCase() + word.slice(1);
   });
