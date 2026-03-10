@@ -288,13 +288,14 @@ function extractObjectsFromArray(raw: string, fieldName: string): AnalysisResult
 // Attempt to recover partial/truncated JSON by extracting complete character objects
 function recoverPartialJson(raw: string, previousResult?: AnalysisResult): AnalysisResult | null {
   try {
-    // Try a full JSON.parse on just the {...} portion first
+    // Try a full JSON.parse on the outermost {...} slice first
     const braceStart = raw.indexOf('{');
-    if (braceStart > 0) {
+    const braceEnd = raw.lastIndexOf('}');
+    if (braceStart >= 0 && braceEnd > braceStart) {
       try {
-        const candidate = raw.slice(braceStart);
+        const candidate = raw.slice(braceStart, braceEnd + 1);
         const p = JSON.parse(candidate) as Record<string, unknown>;
-        if (p.characters || p.updatedCharacters) return p as unknown as AnalysisResult;
+        if (p.characters || p.updatedCharacters !== undefined) return p as unknown as AnalysisResult;
       } catch { /* fall through to object-by-object extraction */ }
     }
 
@@ -310,7 +311,8 @@ function recoverPartialJson(raw: string, previousResult?: AnalysisResult): Analy
     if (characters.length > 0) {
       return { characters, summary };
     }
-    if (updatedCharacters.length > 0 && previousResult) {
+    if (previousResult) {
+      // Even an empty updatedCharacters is valid (no changes this chapter)
       console.warn('[analyze] Recovered delta from truncated JSON —', updatedCharacters.length, 'updates');
       return mergeDelta(previousResult, { updatedCharacters, summary });
     }
@@ -414,9 +416,10 @@ export async function POST(req: NextRequest) {
 
     // Strip markdown code fences and any leading/trailing prose the model adds
     let cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
-    // If there's non-JSON text before the first '{', drop it
+    // Trim to the outermost {...} — drops leading prose and trailing notes
     const firstBrace = cleaned.indexOf('{');
-    if (firstBrace > 0) cleaned = cleaned.slice(firstBrace);
+    const lastBrace = cleaned.lastIndexOf('}');
+    if (firstBrace >= 0 && lastBrace > firstBrace) cleaned = cleaned.slice(firstBrace, lastBrace + 1);
 
     let parsed: Record<string, unknown>;
     try {
