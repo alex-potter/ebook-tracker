@@ -11,15 +11,23 @@ const SUPPORTED_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/
 function buildPrompt(locations: string[]): string {
   return `Look at this map image and find as many of the listed place names as you can. The names are printed as text labels directly on the map.
 
-For each name you can find, record the position of its text label as a percentage of the image size:
-- x: 0 = left edge, 100 = right edge
-- y: 0 = top edge, 100 = bottom edge
+COORDINATE SYSTEM — read carefully:
+  (0,0)─────────────────(100,0)
+    │        TOP                │
+    │   x increases →           │
+    │   y increases ↓           │
+    │        BOTTOM             │
+  (0,100)────────────(100,100)
 
-Examples: upper-left label → x=15, y=10 | bottom-center label → x=50, y=85
+- x=0 is the LEFT edge, x=100 is the RIGHT edge
+- y=0 is the TOP edge, y=100 is the BOTTOM edge
+- A label near the TOP of the image has a SMALL y value (e.g. y=10)
+- A label near the BOTTOM of the image has a LARGE y value (e.g. y=90)
+- Examples: top-left → x=10, y=8 | centre → x=50, y=50 | bottom-right → x=88, y=92
 
 Rules:
-- Include every name from the list that you can find written on the map, even if the text is small or stylised.
-- x and y should point to the center of the text label itself.
+- Include every name from the list that you can find written on the map.
+- x and y should point to the centre of the text label itself.
 - Case-insensitive matching is fine (e.g. "TAR VALON" matches "Tar Valon").
 - Only omit a name if you genuinely cannot find it anywhere on the map.
 - If you cannot find any of the names, return {"pins": {}}.
@@ -71,10 +79,23 @@ function extractPins(raw: string, imageWidth?: number, imageHeight?: number): Re
   const normW = needsNorm ? (imageWidth ?? Math.max(...allX)) : 100;
   const normH = needsNorm ? (imageHeight ?? Math.max(...allY)) : 100;
 
+  let yVals = allY.map((y) => needsNorm ? (y / normH) * 100 : y);
+
+  // Detect letterbox y-bias: llama3.2-vision (and similar) letterboxes non-square images
+  // into a square canvas before processing, shifting all y coordinates upward.
+  // Symptom: median y > 55 AND min y > 15. Correct with linear de-letterbox transform.
+  const sortedY = [...yVals].sort((a, b) => a - b);
+  const medianY = sortedY[Math.floor(sortedY.length / 2)];
+  const minY = sortedY[0];
+  const needsYCorrection = yVals.length >= 2 && medianY > 55 && minY > 15;
+
   const pins: Record<string, LocationPin> = {};
-  for (const [name, pos] of Object.entries(rawPins)) {
+  const entries = Object.entries(rawPins);
+  for (let i = 0; i < entries.length; i++) {
+    const [name, pos] = entries[i];
     const x = needsNorm ? (pos.x / normW) * 100 : pos.x;
-    const y = needsNorm ? (pos.y / normH) * 100 : pos.y;
+    let y = yVals[i];
+    if (needsYCorrection) y = (y - 10) / 1.4; // remove letterbox padding offset
     pins[name] = {
       x: Math.max(0, Math.min(100, x)),
       y: Math.max(0, Math.min(100, y)),
