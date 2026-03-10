@@ -69,7 +69,7 @@ export default function CharacterCard({ character, snapshots, chapterTitles }: P
           <div className="flex items-start justify-between gap-2">
             <div>
               <h3 className="font-semibold text-zinc-100 leading-tight">{character.name}</h3>
-              {character.aliases.length > 0 && (
+              {(character.aliases?.length ?? 0) > 0 && (
                 <p className="text-xs text-zinc-500 truncate mt-0.5">
                   {character.aliases.join(', ')}
                 </p>
@@ -108,7 +108,7 @@ export default function CharacterCard({ character, snapshots, chapterTitles }: P
       )}
 
       {/* Relationships */}
-      {character.relationships.length > 0 && (
+      {(character.relationships?.length ?? 0) > 0 && (
         <div className="px-4 pb-4">
           <button
             onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
