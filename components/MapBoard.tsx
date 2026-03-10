@@ -492,28 +492,48 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
             <div className="absolute inset-0 bg-amber-500/5 border-2 border-amber-500/30 border-dashed pointer-events-none" />
           )}
 
-          {/* Character cluster pins (char mode) */}
-          {charMode && Object.entries(pins).map(([location, pinPos]) => {
-            const { x, y } = pinPos;
-            const chars = locationMap.get(location) ?? [];
-            if (chars.length === 0) return null;
-            const offsets = clusterOffsets(chars.length);
-            const locColor = pinColor(location);
+          {/* Character cluster pins (char mode) — rendered flat so keys persist across
+              snapshot changes and CSS transitions animate position smoothly */}
+          {charMode && (() => {
+            // Build flat list: { char, location, px, py } for every character at a pinned location
+            const charPins: { char: Character; location: string; px: number; py: number }[] = [];
+            for (const [location, { x, y }] of Object.entries(pins)) {
+              const chars = locationMap.get(location) ?? [];
+              if (chars.length === 0) continue;
+              const offsets = clusterOffsets(chars.length);
+              chars.forEach((char, i) => charPins.push({
+                char,
+                location,
+                px: Math.max(1, Math.min(99, x + offsets[i].dx)),
+                py: Math.max(1, Math.min(99, y + offsets[i].dy)),
+              }));
+            }
             return (
-              <div key={`cluster-${location}`}>
-                {/* Faint location dot as anchor */}
-                <div style={{ position: 'absolute', left: `${x}%`, top: `${y}%` }} className="z-5 pointer-events-none">
-                  <div className="w-3 h-3 rounded-full -translate-x-1/2 -translate-y-1/2 border border-white/20" style={{ backgroundColor: `${locColor}40` }} />
-                </div>
-                {chars.map((char, i) => {
-                  const px = Math.max(0, Math.min(100, x + offsets[i].dx));
-                  const py = Math.max(0, Math.min(100, y + offsets[i].dy));
+              <>
+                {/* Faint anchor dots */}
+                {Object.entries(pins).map(([location, { x, y }]) => {
+                  const hasChars = (locationMap.get(location) ?? []).length > 0;
+                  if (!hasChars) return null;
+                  const locColor = pinColor(location);
+                  return (
+                    <div key={`anchor-${location}`} style={{ position: 'absolute', left: `${x}%`, top: `${y}%` }} className="pointer-events-none z-[5]">
+                      <div className="w-3 h-3 rounded-full -translate-x-1/2 -translate-y-1/2 border border-white/20" style={{ backgroundColor: `${locColor}40` }} />
+                    </div>
+                  );
+                })}
+                {/* Character pins — keyed by name so the element persists when position changes */}
+                {charPins.map(({ char, location, px, py }, globalIdx) => {
                   const color = charImportanceColor(char.importance);
                   const isActive = activeCharPin === char.name;
                   return (
                     <div
                       key={char.name}
-                      style={{ position: 'absolute', left: `${px}%`, top: `${py}%` }}
+                      style={{
+                        position: 'absolute',
+                        left: `${px}%`,
+                        top: `${py}%`,
+                        transition: `left 0.8s cubic-bezier(0.4,0,0.2,1) ${globalIdx * 25}ms, top 0.8s cubic-bezier(0.4,0,0.2,1) ${globalIdx * 25}ms`,
+                      }}
                       className="z-10"
                       onClick={(e) => { e.stopPropagation(); setActiveCharPin(isActive ? null : char.name); }}
                     >
@@ -543,9 +563,9 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
                     </div>
                   );
                 })}
-              </div>
+              </>
             );
-          })}
+          })()}
 
           {/* Accepted pins */}
           {!charMode && Object.entries(pins).map(([location, pinPos]) => {
