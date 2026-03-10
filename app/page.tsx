@@ -262,13 +262,20 @@ export default function Home() {
 
   function loadBookFromMeta(title: string, author: string) {
     const stored = loadStored(title, author);
-    if (!stored?.bookMeta) return;
-    const parsed: ParsedEbook = {
-      title,
-      author,
-      chapters: stored.bookMeta.chapters.map((ch) => ({ ...ch, text: '' })),
-      books: stored.bookMeta.books,
-    };
+    if (!stored) return;
+    const parsed: ParsedEbook = stored.bookMeta
+      ? {
+          title,
+          author,
+          chapters: stored.bookMeta.chapters.map((ch) => ({ ...ch, text: '' })),
+          books: stored.bookMeta.books,
+        }
+      : {
+          title,
+          author,
+          // No chapter list available — analysis data still loads fine
+          chapters: [],
+        };
     activateBook(parsed, stored);
   }
 
@@ -522,13 +529,13 @@ export default function Home() {
                   </p>
                   <ul className="space-y-2">
                     {savedBooks.map((entry) => {
-                      const hasMeta = loadStored(entry.title, entry.author)?.bookMeta !== undefined;
+                      const stored = loadStored(entry.title, entry.author);
                       const analyzed = entry.lastAnalyzedIndex >= 0;
                       return (
                         <li key={`${entry.title}::${entry.author}`} className="flex items-center gap-2">
                           <button
                             onClick={() => loadBookFromMeta(entry.title, entry.author)}
-                            disabled={!hasMeta}
+                            disabled={!stored}
                             className="flex-1 text-left px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl hover:border-zinc-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             <div className="flex items-start justify-between gap-3">
