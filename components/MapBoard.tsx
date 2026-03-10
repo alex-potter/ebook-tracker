@@ -386,12 +386,21 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
             {pinnedCount} of {locations.length} locations pinned
           </p>
           {pinnedCount > 0 && (
-            <button
-              onClick={() => { setCharMode(m => !m); setActivePin(null); setActiveCharPin(null); }}
-              className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${charMode ? 'border-amber-600/60 text-amber-400 bg-amber-500/10' : 'border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600'}`}
-            >
-              {charMode ? 'Character pins' : 'Location pins'}
-            </button>
+            <div className="flex rounded-lg overflow-hidden border border-zinc-700 text-xs">
+              {(['locations', 'characters'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => { setCharMode(mode === 'characters'); setActivePin(null); setActiveCharPin(null); }}
+                  className={`px-2.5 py-1 transition-colors ${
+                    (mode === 'characters') === charMode
+                      ? 'bg-zinc-700 text-zinc-100'
+                      : 'bg-transparent text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  {mode === 'locations' ? 'Locations' : 'Characters'}
+                </button>
+              ))}
+            </div>
           )}
           <div className="flex-1" />
           {placingLocation && (
