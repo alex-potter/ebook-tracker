@@ -246,6 +246,16 @@ function extractObjectsFromArray(raw: string, fieldName: string): AnalysisResult
 // Attempt to recover partial/truncated JSON by extracting complete character objects
 function recoverPartialJson(raw: string, previousResult?: AnalysisResult): AnalysisResult | null {
   try {
+    // Try a full JSON.parse on just the {...} portion first
+    const braceStart = raw.indexOf('{');
+    if (braceStart > 0) {
+      try {
+        const candidate = raw.slice(braceStart);
+        const p = JSON.parse(candidate) as Record<string, unknown>;
+        if (p.characters || p.updatedCharacters) return p as unknown as AnalysisResult;
+      } catch { /* fall through to object-by-object extraction */ }
+    }
+
     // Try full format first ("characters"), then delta format ("updatedCharacters")
     const characters = extractObjectsFromArray(raw, 'characters');
     const updatedCharacters = extractObjectsFromArray(raw, 'updatedCharacters');
@@ -360,8 +370,11 @@ export async function POST(req: NextRequest) {
       ? await callLocal(SYSTEM_PROMPT, userPrompt)
       : await callAnthropic(SYSTEM_PROMPT, userPrompt);
 
-    // Strip markdown code fences if the model wraps output in them
-    const cleaned = raw.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
+    // Strip markdown code fences and any leading/trailing prose the model adds
+    let cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+    // If there's non-JSON text before the first '{', drop it
+    const firstBrace = cleaned.indexOf('{');
+    if (firstBrace > 0) cleaned = cleaned.slice(firstBrace);
 
     let parsed: Record<string, unknown>;
     try {
