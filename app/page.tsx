@@ -95,9 +95,16 @@ interface EtbookExport {
   mapState: MapState | null;
 }
 
-function exportBook(title: string, author: string) {
+function exportBook(title: string, author: string, liveParsed?: ParsedEbook) {
   const state = loadStored(title, author);
   if (!state) return;
+  // Synthesize bookMeta from live parsed book if it wasn't saved yet
+  if (!state.bookMeta && liveParsed && liveParsed.title === title && liveParsed.author === author) {
+    state.bookMeta = {
+      chapters: liveParsed.chapters.map(({ id, title: t, order, bookIndex, bookTitle }) => ({ id, title: t, order, bookIndex, bookTitle })),
+      books: liveParsed.books,
+    };
+  }
   const mapState = loadMapState(title, author);
   const payload: EtbookExport = { version: 2, title, author, state, mapState };
   const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
@@ -624,7 +631,7 @@ export default function Home() {
           {hasStoredState && <span className="hidden md:inline text-xs text-zinc-600">Saved · ch.{stored.lastAnalyzedIndex + 1}</span>}
           {hasStoredState && (
             <button
-              onClick={() => exportBook(book.title, book.author)}
+              onClick={() => exportBook(book.title, book.author, book)}
               className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
               title="Export .etbook file"
             >
