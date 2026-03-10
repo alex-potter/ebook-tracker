@@ -448,8 +448,7 @@ export default function Home() {
     return (
       <main className="min-h-screen flex flex-col">
         {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
-        <div className="flex items-center justify-between border-b border-zinc-800 px-4 sm:px-6 pt-4 sm:pt-6">
-          <div className="flex gap-0.5 overflow-x-auto">
+        <div className="flex items-end border-b border-zinc-800 px-2 sm:px-6 pt-4 sm:pt-6 overflow-x-auto scrollbar-none">
           {([
             { key: 'file', label: 'Upload EPUB' },
             ...(!IS_MOBILE ? [{ key: 'calibre' as const, label: 'Calibre' }] : []),
@@ -460,7 +459,7 @@ export default function Home() {
               key={key}
               onClick={() => setUploadTab(key)}
               suppressHydrationWarning={key === 'mybooks'}
-              className={`px-3 sm:px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors -mb-px whitespace-nowrap ${
+              className={`flex-shrink-0 px-2.5 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-t-lg border-b-2 transition-colors -mb-px whitespace-nowrap ${
                 uploadTab === key
                   ? 'border-amber-500 text-amber-400'
                   : 'border-transparent text-zinc-500 hover:text-zinc-300'
@@ -469,11 +468,10 @@ export default function Home() {
               {label}
             </button>
           ))}
-          </div>
           {IS_MOBILE && (
             <button
               onClick={() => setShowSettings(true)}
-              className="flex-shrink-0 pb-2 pl-3 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+              className="flex-shrink-0 ml-auto pb-2 pl-2 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
               title="AI Settings"
             >
               ⚙ Settings
