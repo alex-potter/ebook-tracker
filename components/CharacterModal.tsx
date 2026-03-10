@@ -38,14 +38,16 @@ function initials(name: string): string {
 
 /** Returns true if any name/alias/name-part of `c` appears as a whole word in `text` */
 function mentionedIn(text: string, c: { name: string; aliases: string[] }): boolean {
-  const candidates = [
-    c.name,
-    ...(c.aliases ?? []),
-    // Individual words of the full name (skip short particles like "of", "the")
-    ...c.name.split(/\s+/).filter((w) => w.length >= 4),
-  ];
-  return candidates.some((term) => {
-    // Escape regex special chars, then wrap in word boundaries
+  const allNames = [c.name, ...(c.aliases ?? [])];
+  const candidates = new Set<string>(allNames);
+  // Also match individual words from name and aliases (catches "Jon" in "Jon Snow", "Ned", etc.)
+  // Skip only very short particles (≤2 chars) like "of", "the", "a"
+  for (const fullName of allNames) {
+    for (const word of fullName.split(/\s+/)) {
+      if (word.length >= 3) candidates.add(word);
+    }
+  }
+  return [...candidates].some((term) => {
     const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return new RegExp(`(?<![a-zA-Z])${escaped}(?![a-zA-Z])`, 'i').test(text);
   });
