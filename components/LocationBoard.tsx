@@ -217,15 +217,17 @@ export default function LocationBoard({ characters, bookTitle }: Props) {
 
               <ul className="divide-y divide-zinc-800/50">
                 {chars.map((c) => (
-                  <li key={c.name} className="px-4 py-2.5 flex items-center gap-3">
+                  <li key={c.name} className="px-4 py-3 flex items-start gap-3">
                     <div className={`flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-xs font-bold ${nameColor(c.name)}`}>
                       {initials(c.name)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-zinc-300 truncate">{c.name}</p>
-                      <p className="text-xs text-zinc-600 truncate">{c.description.split('.')[0]}</p>
+                      <p className="text-xs text-zinc-500 line-clamp-2 leading-relaxed">
+                        {c.recentEvents || c.description.split('.')[0]}
+                      </p>
                     </div>
-                    <span className={`flex-shrink-0 w-2 h-2 rounded-full ${STATUS_DOT[c.status]}`} title={c.status} />
+                    <span className={`flex-shrink-0 mt-1 w-2 h-2 rounded-full ${STATUS_DOT[c.status]}`} title={c.status} />
                   </li>
                 ))}
               </ul>
