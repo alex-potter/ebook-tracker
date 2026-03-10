@@ -30,6 +30,11 @@ CHARACTER COMPLETENESS RULES:
 - A character mentioned once by name still gets an entry.
 - Never filter, skip, or summarize away characters because they seem unimportant.
 
+DEDUPLICATION RULES (critical):
+- A character must appear EXACTLY ONCE regardless of how many names or nicknames they are called by.
+- If the same person is referred to by multiple names (e.g. "Matrim Cauthon" and "Mat"), create ONE entry using their fullest known name and list all shorter forms in "aliases".
+- Never create separate entries for a full name and its nickname or shortened form.
+
 Your output must be valid JSON and nothing else.`;
 
 const SCHEMA = `{
@@ -134,6 +139,42 @@ INSTRUCTIONS — RETURN ONLY CHANGES, NOT THE FULL LIST:
 
 Return ONLY a JSON object with "updatedCharacters", "updatedLocations", and "summary" (no markdown fences, no explanation):
 ${DELTA_SCHEMA}`;
+}
+
+/** Merge characters that share a name/alias so nicknames don't create duplicate entries. */
+function deduplicateCharacters(chars: AnalysisResult['characters']): AnalysisResult['characters'] {
+  const norm = (s: string) => s.toLowerCase().trim();
+  const result: AnalysisResult['characters'] = [];
+  // nameIndex maps every known normalised name/alias → index into result[]
+  const nameIndex = new Map<string, number>();
+
+  for (const char of chars) {
+    const allNames = [char.name, ...(char.aliases ?? [])].map(norm).filter(Boolean);
+    const existingIdx = allNames.reduce<number | undefined>(
+      (found, n) => found ?? nameIndex.get(n),
+      undefined,
+    );
+
+    if (existingIdx !== undefined) {
+      // Merge into existing entry: keep longer name as canonical, union aliases
+      const existing = result[existingIdx];
+      const canonical = existing.name.length >= char.name.length ? existing.name : char.name;
+      const aliasSet = new Set([
+        ...(existing.aliases ?? []),
+        ...(char.aliases ?? []),
+        existing.name !== canonical ? existing.name : '',
+        char.name !== canonical ? char.name : '',
+      ].map(s => s.trim()).filter(Boolean));
+      result[existingIdx] = { ...existing, ...char, name: canonical, aliases: [...aliasSet] };
+      // Register any new names
+      allNames.forEach(n => nameIndex.set(n, existingIdx));
+    } else {
+      const idx = result.length;
+      result.push(char);
+      allNames.forEach(n => nameIndex.set(n, idx));
+    }
+  }
+  return result;
 }
 
 // Merge a delta result into the previous full result
@@ -348,6 +389,7 @@ export async function POST(req: NextRequest) {
       result = parsed as unknown as AnalysisResult;
     }
 
+    result = { ...result, characters: deduplicateCharacters(result.characters) };
     return NextResponse.json(result);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
