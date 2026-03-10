@@ -33,20 +33,52 @@ ${locations.map((l) => `- ${l}`).join('\n')}`;
 }
 
 function extractPins(raw: string): Record<string, LocationPin> {
+  // First try valid JSON parse
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return {};
-  try {
-    const parsed = JSON.parse(jsonMatch[0]) as { pins?: Record<string, LocationPin> };
-    const pins: Record<string, LocationPin> = {};
-    for (const [name, pos] of Object.entries(parsed.pins ?? {})) {
-      const x = Math.max(0, Math.min(100, Number(pos.x)));
-      const y = Math.max(0, Math.min(100, Number(pos.y)));
-      if (!isNaN(x) && !isNaN(y)) pins[name] = { x, y };
+  const rawPins: Record<string, { x: number; y: number }> = {};
+
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]) as { pins?: Record<string, LocationPin> };
+      for (const [name, pos] of Object.entries(parsed.pins ?? {})) {
+        const x = Number(pos.x), y = Number(pos.y);
+        if (!isNaN(x) && !isNaN(y)) rawPins[name] = { x, y };
+      }
+    } catch {
+      // JSON truncated or malformed — fall through to regex recovery
     }
-    return pins;
-  } catch {
-    return {};
   }
+
+  // Regex recovery: extract complete "name": {"x": N, "y": N} pairs from raw string
+  // This handles truncated JSON where JSON.parse fails
+  if (Object.keys(rawPins).length === 0) {
+    const pairRe = /"([^"]+)"\s*:\s*\{\s*"x"\s*:\s*([\d.]+)\s*,\s*"y"\s*:\s*([\d.]+)\s*\}/g;
+    let m;
+    while ((m = pairRe.exec(raw)) !== null) {
+      const name = m[1], x = Number(m[2]), y = Number(m[3]);
+      if (!isNaN(x) && !isNaN(y)) rawPins[name] = { x, y };
+    }
+  }
+
+  if (Object.keys(rawPins).length === 0) return {};
+
+  // Normalize coordinates: if any value exceeds 100 the model returned pixel coords
+  const allX = Object.values(rawPins).map((p) => p.x);
+  const allY = Object.values(rawPins).map((p) => p.y);
+  const maxX = Math.max(...allX);
+  const maxY = Math.max(...allY);
+  const needsNorm = maxX > 100 || maxY > 100;
+
+  const pins: Record<string, LocationPin> = {};
+  for (const [name, pos] of Object.entries(rawPins)) {
+    const x = needsNorm ? (pos.x / maxX) * 100 : pos.x;
+    const y = needsNorm ? (pos.y / maxY) * 100 : pos.y;
+    pins[name] = {
+      x: Math.max(0, Math.min(100, x)),
+      y: Math.max(0, Math.min(100, y)),
+    };
+  }
+  return pins;
 }
 
 async function callLocal(imageDataUrl: string, prompt: string): Promise<string> {
@@ -59,7 +91,7 @@ async function callLocal(imageDataUrl: string, prompt: string): Promise<string> 
     dispatcher: ollamaAgent,
     body: JSON.stringify({
       model,
-      max_tokens: 1024,
+      max_tokens: 4096,
       messages: [
         {
           role: 'user',
@@ -87,7 +119,7 @@ async function callAnthropic(
   const anthropic = new Anthropic();
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
+    max_tokens: 4096,
     messages: [
       {
         role: 'user',
