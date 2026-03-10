@@ -10,6 +10,24 @@ interface Props {
   onMapStateChange: (state: MapState) => void;
 }
 
+/** Resize a dataURL to fit within maxDim×maxDim, preserving aspect ratio. */
+function resizeDataUrl(dataUrl: string, maxDim = 1024): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.src = dataUrl;
+  });
+}
+
 function pinColor(name: string): string {
   const palette = ['#f43f5e', '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#14b8a6', '#6366f1'];
   let hash = 0;
@@ -140,11 +158,12 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
     setDetectError(null);
     setSuggestions(null);
     try {
+      const imageDataUrl = await resizeDataUrl(mapState.imageDataUrl, 1024);
       const res = await fetch('/api/detect-pins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          imageDataUrl: mapState.imageDataUrl,
+          imageDataUrl,
           locations: locations.map(([name]) => name),
         }),
       });
