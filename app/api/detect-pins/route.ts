@@ -31,7 +31,7 @@ Place names to find:
 ${locations.map((l) => `- ${l}`).join('\n')}`;
 }
 
-function extractPins(raw: string): Record<string, LocationPin> {
+function extractPins(raw: string, imageWidth?: number, imageHeight?: number): Record<string, LocationPin> {
   // First try valid JSON parse
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
   const rawPins: Record<string, { x: number; y: number }> = {};
@@ -61,17 +61,19 @@ function extractPins(raw: string): Record<string, LocationPin> {
 
   if (Object.keys(rawPins).length === 0) return {};
 
-  // Normalize coordinates: if any value exceeds 100 the model returned pixel coords
+  // Normalize coordinates if the model returned pixel coords (any value > 100)
   const allX = Object.values(rawPins).map((p) => p.x);
   const allY = Object.values(rawPins).map((p) => p.y);
-  const maxX = Math.max(...allX);
-  const maxY = Math.max(...allY);
-  const needsNorm = maxX > 100 || maxY > 100;
+  const needsNorm = Math.max(...allX) > 100 || Math.max(...allY) > 100;
+
+  // Use actual image dimensions when available; fall back to data-max (less accurate)
+  const normW = needsNorm ? (imageWidth ?? Math.max(...allX)) : 100;
+  const normH = needsNorm ? (imageHeight ?? Math.max(...allY)) : 100;
 
   const pins: Record<string, LocationPin> = {};
   for (const [name, pos] of Object.entries(rawPins)) {
-    const x = needsNorm ? (pos.x / maxX) * 100 : pos.x;
-    const y = needsNorm ? (pos.y / maxY) * 100 : pos.y;
+    const x = needsNorm ? (pos.x / normW) * 100 : pos.x;
+    const y = needsNorm ? (pos.y / normH) * 100 : pos.y;
     pins[name] = {
       x: Math.max(0, Math.min(100, x)),
       y: Math.max(0, Math.min(100, y)),
@@ -134,9 +136,11 @@ async function callAnthropic(
 
 export async function POST(req: NextRequest) {
   try {
-    const { imageDataUrl, locations } = (await req.json()) as {
+    const { imageDataUrl, locations, imageWidth, imageHeight } = (await req.json()) as {
       imageDataUrl: string;
       locations: string[];
+      imageWidth?: number;
+      imageHeight?: number;
     };
 
     if (!imageDataUrl || !locations?.length) {
@@ -160,7 +164,7 @@ export async function POST(req: NextRequest) {
 
     const cleaned = raw.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
     console.log('[detect-pins] raw response:', cleaned.slice(0, 500));
-    const pins = extractPins(cleaned);
+    const pins = extractPins(cleaned, imageWidth, imageHeight);
     console.log('[detect-pins] extracted pins:', Object.keys(pins));
     return NextResponse.json({ pins });
   } catch (err) {

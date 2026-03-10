@@ -11,7 +11,7 @@ interface Props {
 }
 
 /** Resize a dataURL to fit within maxDim×maxDim, preserving aspect ratio. */
-function resizeDataUrl(dataUrl: string, maxDim = 1024): Promise<string> {
+function resizeDataUrl(dataUrl: string, maxDim = 1024): Promise<{ dataUrl: string; width: number; height: number }> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -22,7 +22,7 @@ function resizeDataUrl(dataUrl: string, maxDim = 1024): Promise<string> {
       canvas.width = w;
       canvas.height = h;
       canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL('image/jpeg', 0.85));
+      resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.85), width: w, height: h });
     };
     img.src = dataUrl;
   });
@@ -158,12 +158,14 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
     setDetectError(null);
     setSuggestions(null);
     try {
-      const imageDataUrl = await resizeDataUrl(mapState.imageDataUrl, 1536);
+      const { dataUrl: imageDataUrl, width: imageWidth, height: imageHeight } = await resizeDataUrl(mapState.imageDataUrl, 1536);
       const res = await fetch('/api/detect-pins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           imageDataUrl,
+          imageWidth,
+          imageHeight,
           locations: locations.map(([name]) => name),
         }),
       });
