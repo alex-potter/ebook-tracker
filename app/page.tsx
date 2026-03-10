@@ -473,7 +473,7 @@ export default function Home() {
       setRebuildProgress(null);
       analyzeCancelRef.current = false;
     }
-  }, [book, currentIndex, excludedBooks]);
+  }, [book, currentIndex, excludedBooks, excludedChapters]);
 
   const handleRebuild = useCallback(async () => {
     if (!book) return;
@@ -516,7 +516,7 @@ export default function Home() {
       setRebuildProgress(null);
       rebuildCancelRef.current = false;
     }
-  }, [book, currentIndex]);
+  }, [book, currentIndex, excludedBooks, excludedChapters]);
 
   const characters = result?.characters ?? [];
   const displayed = characters
