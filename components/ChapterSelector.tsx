@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { EbookChapter } from '@/types';
 
 interface Props {
@@ -38,27 +38,114 @@ function chapterIndexToLocation(index: number, chapters: EbookChapter[]): number
   return Math.round(cumulative / BYTES_PER_LOCATION);
 }
 
+interface ChapterItemProps {
+  ch: EbookChapter;
+  globalIndex: number;
+  currentIndex: number;
+  lastAnalyzedIndex: number | null;
+  snapshotIndices?: Set<number>;
+  isExcluded: boolean;
+  rebuilding: boolean;
+  rebuildProgress: { current: number; total: number } | null;
+  mode: 'chapter' | 'location';
+  chapters: EbookChapter[];
+  onChange: (index: number) => void;
+  setLocationInput: (v: string) => void;
+}
+
+function ChapterItem({
+  ch, globalIndex, currentIndex, lastAnalyzedIndex, snapshotIndices,
+  isExcluded, rebuilding, rebuildProgress, mode, chapters, onChange, setLocationInput,
+}: ChapterItemProps) {
+  const isRebuildingThis = rebuilding && rebuildProgress && globalIndex === rebuildProgress.current - 1;
+  const hasSnapshot = snapshotIndices?.has(globalIndex) ?? false;
+  const isLastAnalyzed = lastAnalyzedIndex !== null && globalIndex === lastAnalyzedIndex;
+  const isAnalyzed = lastAnalyzedIndex !== null && globalIndex < lastAnalyzedIndex;
+  const isCurrent = globalIndex === currentIndex;
+
+  const marker = isExcluded ? '✗'
+    : isRebuildingThis ? '↻'
+    : isLastAnalyzed ? '★'
+    : hasSnapshot ? '◆'
+    : isAnalyzed ? '✓'
+    : isCurrent ? '▸'
+    : globalIndex < currentIndex ? '·'
+    : '○';
+
+  const color = isExcluded ? 'text-zinc-800 cursor-default'
+    : isRebuildingThis ? 'bg-violet-500/10 text-violet-400'
+    : isCurrent ? 'bg-zinc-800 text-zinc-100 font-medium'
+    : hasSnapshot ? 'text-amber-600/70 hover:bg-amber-950/30 hover:text-amber-500'
+    : isAnalyzed || isLastAnalyzed ? 'text-zinc-400 hover:bg-zinc-800/60'
+    : globalIndex < currentIndex ? 'text-zinc-500 hover:bg-zinc-800/60'
+    : 'text-zinc-700 cursor-default';
+
+  return (
+    <button
+      onClick={() => {
+        onChange(globalIndex);
+        if (mode === 'location') setLocationInput(String(chapterIndexToLocation(globalIndex, chapters)));
+      }}
+      disabled={globalIndex > currentIndex || isExcluded}
+      title={hasSnapshot ? 'Snapshot saved' : undefined}
+      className={`w-full text-left px-2.5 py-1.5 rounded-md text-xs transition-colors ${color}`}
+    >
+      <span className="mr-1.5 text-[10px]">{marker}</span>
+      {ch.title}
+      {mode === 'location' && (
+        <span className="ml-1 text-zinc-600">~{chapterIndexToLocation(globalIndex, chapters).toLocaleString()}</span>
+      )}
+    </button>
+  );
+}
+
 export default function ChapterSelector({
-  chapters,
-  currentIndex,
-  onChange,
-  onAnalyze,
-  onRebuild,
-  onCancelRebuild,
-  analyzing,
-  rebuilding,
-  rebuildProgress,
-  canIncrement,
-  lastAnalyzedIndex,
-  snapshotIndices,
-  excludedBooks,
-  onToggleBook,
+  chapters, currentIndex, onChange, onAnalyze, onRebuild, onCancelRebuild,
+  analyzing, rebuilding, rebuildProgress, canIncrement, lastAnalyzedIndex,
+  snapshotIndices, excludedBooks, onToggleBook,
 }: Props) {
   const [mode, setMode] = useState<'chapter' | 'location'>('chapter');
   const [locationInput, setLocationInput] = useState('');
 
+  const isOmnibus = chapters.some((ch) => ch.bookIndex !== undefined);
   const totalLocations = chapterIndexToLocation(chapters.length - 1, chapters);
   const busy = analyzing || rebuilding;
+
+  // Build book groups (omnibus only)
+  const bookGroups = new Map<number, {
+    bookTitle: string;
+    items: Array<{ ch: EbookChapter; globalIndex: number; chapterNum: number }>;
+  }>();
+  if (isOmnibus) {
+    const counters = new Map<number, number>();
+    for (let i = 0; i < chapters.length; i++) {
+      const ch = chapters[i];
+      const bIdx = ch.bookIndex ?? 0;
+      if (!bookGroups.has(bIdx)) bookGroups.set(bIdx, { bookTitle: ch.bookTitle ?? '', items: [] });
+      const num = (counters.get(bIdx) ?? 0) + 1;
+      counters.set(bIdx, num);
+      bookGroups.get(bIdx)!.items.push({ ch, globalIndex: i, chapterNum: num });
+    }
+  }
+
+  // Auto-expand the book containing currentIndex
+  const currentBookIdx = isOmnibus ? (chapters[currentIndex]?.bookIndex ?? 0) : undefined;
+  const [expandedBooks, setExpandedBooks] = useState<Set<number>>(() =>
+    currentBookIdx !== undefined ? new Set([currentBookIdx]) : new Set(),
+  );
+  useEffect(() => {
+    if (currentBookIdx !== undefined) {
+      setExpandedBooks((prev) => prev.has(currentBookIdx) ? prev : new Set([...prev, currentBookIdx]));
+    }
+  }, [currentBookIdx]);
+
+  function toggleExpand(bookIdx: number) {
+    setExpandedBooks((prev) => {
+      const next = new Set(prev);
+      if (next.has(bookIdx)) next.delete(bookIdx); else next.add(bookIdx);
+      return next;
+    });
+  }
 
   function handleLocationChange(raw: string) {
     setLocationInput(raw);
@@ -71,6 +158,8 @@ export default function ChapterSelector({
     if (next === 'location') setLocationInput(String(chapterIndexToLocation(currentIndex, chapters)));
   }
 
+  const itemProps = { currentIndex, lastAnalyzedIndex, snapshotIndices, rebuilding, rebuildProgress, mode, chapters, onChange, setLocationInput };
+
   return (
     <div className="flex flex-col h-full">
       {/* Mode toggle */}
@@ -80,9 +169,7 @@ export default function ChapterSelector({
             key={m}
             onClick={() => handleModeSwitch(m)}
             className={`flex-1 py-1.5 text-xs font-medium transition-colors ${
-              mode === m
-                ? 'bg-zinc-700 text-zinc-100'
-                : 'bg-transparent text-zinc-500 hover:text-zinc-300'
+              mode === m ? 'bg-zinc-700 text-zinc-100' : 'bg-transparent text-zinc-500 hover:text-zinc-300'
             }`}
           >
             {m === 'chapter' ? 'By Chapter' : 'Kindle Location'}
@@ -90,11 +177,9 @@ export default function ChapterSelector({
         ))}
       </div>
 
+      {/* Currently at */}
       <div className="mb-4">
-        <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider mb-2">
-          Currently at
-        </label>
-
+        <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider mb-2">Currently at</label>
         {mode === 'chapter' ? (
           <>
             <div className="relative">
@@ -103,50 +188,27 @@ export default function ChapterSelector({
                 onChange={(e) => onChange(Number(e.target.value))}
                 className="w-full appearance-none bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 pr-8 text-zinc-200 text-sm focus:outline-none focus:border-zinc-500 cursor-pointer"
               >
-                {(() => {
-                  const isOmnibus = chapters.some((ch) => ch.bookIndex !== undefined);
-                  if (!isOmnibus) {
-                    return chapters.map((ch, i) => (
+                {isOmnibus
+                  ? [...bookGroups.entries()].map(([bookIdx, { bookTitle, items }]) => (
+                      <optgroup key={bookIdx} label={bookTitle}>
+                        {items.map(({ ch, globalIndex, chapterNum }) => (
+                          <option key={ch.id} value={globalIndex}>Ch. {chapterNum} — {ch.title}</option>
+                        ))}
+                      </optgroup>
+                    ))
+                  : chapters.map((ch, i) => (
                       <option key={ch.id} value={i}>{i + 1}. {ch.title}</option>
-                    ));
-                  }
-                  // Group by book, reset chapter numbering per book
-                  const groups = new Map<number, { bookTitle: string; items: Array<{ ch: typeof chapters[0]; globalIndex: number; chapterNum: number }> }>();
-                  const chapterCounters = new Map<number, number>();
-                  for (let i = 0; i < chapters.length; i++) {
-                    const ch = chapters[i];
-                    const bookIdx = ch.bookIndex ?? 0;
-                    const bookTitle = ch.bookTitle ?? '';
-                    if (!groups.has(bookIdx)) groups.set(bookIdx, { bookTitle, items: [] });
-                    const num = (chapterCounters.get(bookIdx) ?? 0) + 1;
-                    chapterCounters.set(bookIdx, num);
-                    groups.get(bookIdx)!.items.push({ ch, globalIndex: i, chapterNum: num });
-                  }
-                  return [...groups.entries()].map(([bookIdx, { bookTitle, items }]) => (
-                    <optgroup key={bookIdx} label={bookTitle}>
-                      {items.map(({ ch, globalIndex, chapterNum }) => (
-                        <option key={ch.id} value={globalIndex}>Ch. {chapterNum} — {ch.title}</option>
-                      ))}
-                    </optgroup>
-                  ));
-                })()}
+                    ))}
               </select>
-              <div className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-zinc-500">
-                ▾
-              </div>
+              <div className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-zinc-500">▾</div>
             </div>
             <p className="mt-1.5 text-xs text-zinc-600">
               {(() => {
                 const ch = chapters[currentIndex];
-                if (ch?.bookIndex === undefined) return `${currentIndex + 1} of ${chapters.length} chapters`;
-                // Count chapter number within its book
-                let num = 0;
-                let bookTotal = 0;
+                if (!ch || ch.bookIndex === undefined) return `${currentIndex + 1} of ${chapters.length} chapters`;
+                let num = 0, bookTotal = 0;
                 for (const c of chapters) {
-                  if (c.bookIndex === ch.bookIndex) {
-                    bookTotal++;
-                    if (c.order <= ch.order) num++;
-                  }
+                  if (c.bookIndex === ch.bookIndex) { bookTotal++; if (c.order <= ch.order) num++; }
                 }
                 return `Ch. ${num} of ${bookTotal} · ${ch.bookTitle}`;
               })()}
@@ -155,32 +217,22 @@ export default function ChapterSelector({
         ) : (
           <>
             <input
-              type="number"
-              min={1}
-              max={totalLocations}
-              value={locationInput}
+              type="number" min={1} max={totalLocations} value={locationInput}
               onChange={(e) => handleLocationChange(e.target.value)}
               placeholder="e.g. 3421"
               className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-zinc-200 text-sm focus:outline-none focus:border-zinc-500"
             />
-            <p className="mt-1.5 text-xs text-zinc-600">
-              ≈ {chapters[currentIndex]?.title} · ~{totalLocations.toLocaleString()} total
-            </p>
+            <p className="mt-1.5 text-xs text-zinc-600">≈ {chapters[currentIndex]?.title} · ~{totalLocations.toLocaleString()} total</p>
             <p className="mt-0.5 text-xs text-zinc-700">Approximate (±1 chapter)</p>
           </>
         )}
       </div>
 
-      {/* Analyze button */}
+      {/* Analyze */}
       <button
-        onClick={onAnalyze}
-        disabled={busy}
+        onClick={onAnalyze} disabled={busy}
         className={`w-full py-2.5 rounded-lg text-sm font-semibold transition-colors ${
-          busy
-            ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed'
-            : canIncrement
-            ? 'bg-amber-500 text-zinc-900 hover:bg-amber-400'
-            : 'bg-amber-500 text-zinc-900 hover:bg-amber-400'
+          busy ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed' : 'bg-amber-500 text-zinc-900 hover:bg-amber-400'
         }`}
       >
         {analyzing ? (
@@ -190,163 +242,106 @@ export default function ChapterSelector({
           </span>
         ) : canIncrement ? '⚡ Update Characters' : '⌖ Analyze Characters'}
       </button>
-
       {canIncrement && lastAnalyzedIndex !== null && !busy && (
-        <p className="mt-1.5 text-xs text-center text-zinc-600">
-          Chapters {lastAnalyzedIndex + 2}–{currentIndex + 1} only
-        </p>
+        <p className="mt-1.5 text-xs text-center text-zinc-600">Chapters {lastAnalyzedIndex + 2}–{currentIndex + 1} only</p>
       )}
 
-      {/* Rebuild button */}
+      {/* Rebuild */}
       <div className="mt-2">
         {rebuilding ? (
-          <button
-            onClick={onCancelRebuild}
-            className="w-full py-2 rounded-lg text-xs font-medium border border-red-800/50 text-red-500 hover:bg-red-950/30 transition-colors"
-          >
+          <button onClick={onCancelRebuild} className="w-full py-2 rounded-lg text-xs font-medium border border-red-800/50 text-red-500 hover:bg-red-950/30 transition-colors">
             Cancel rebuild
-            {rebuildProgress && (
-              <span className="ml-1 text-red-600">
-                ({rebuildProgress.current}/{rebuildProgress.total})
-              </span>
-            )}
+            {rebuildProgress && <span className="ml-1 text-red-600">({rebuildProgress.current}/{rebuildProgress.total})</span>}
           </button>
         ) : (
           <button
-            onClick={onRebuild}
-            disabled={busy}
+            onClick={onRebuild} disabled={busy}
             title="Analyze each chapter individually for the most accurate dataset"
             className={`w-full py-2 rounded-lg text-xs font-medium border transition-colors ${
-              busy
-                ? 'border-zinc-800 text-zinc-700 cursor-not-allowed'
-                : 'border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600'
+              busy ? 'border-zinc-800 text-zinc-700 cursor-not-allowed' : 'border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600'
             }`}
           >
             Rebuild from scratch
           </button>
         )}
-        {!busy && (
-          <p className="mt-1 text-xs text-center text-zinc-700">
-            Ch.1–{currentIndex + 1}, one by one
-          </p>
-        )}
+        {!busy && <p className="mt-1 text-xs text-center text-zinc-700">Ch.1–{currentIndex + 1}, one by one</p>}
       </div>
-
-      {/* Book filter pills — omnibus only */}
-      {(() => {
-        const books = new Map<number, string>();
-        for (const ch of chapters) {
-          if (ch.bookIndex !== undefined && ch.bookTitle && !books.has(ch.bookIndex))
-            books.set(ch.bookIndex, ch.bookTitle);
-        }
-        if (books.size < 2) return null;
-        return (
-          <div className="mt-4">
-            <p className="text-xs font-medium text-zinc-600 uppercase tracking-wider mb-1.5">Include books</p>
-            <div className="flex flex-col gap-1">
-              {[...books.entries()].map(([idx, title]) => {
-                const excluded = excludedBooks?.has(idx) ?? false;
-                return (
-                  <button
-                    key={idx}
-                    onClick={() => onToggleBook?.(idx)}
-                    className={`w-full text-left px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors border ${
-                      excluded
-                        ? 'border-zinc-800 text-zinc-700 line-through'
-                        : 'border-zinc-700 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300'
-                    }`}
-                  >
-                    {excluded ? '✗' : '✓'} {title}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })()}
 
       {/* Chapter list */}
       <div className="mt-5 flex-1 overflow-y-auto">
         <p className="text-xs font-medium text-zinc-600 uppercase tracking-wider mb-2">Chapters</p>
-        <ul className="space-y-0.5">
-          {chapters.map((ch, i) => {
-            const isRebuildingThis = rebuilding && rebuildProgress && i === rebuildProgress.current - 1;
-            const hasSnapshot = snapshotIndices?.has(i) ?? false;
-            const isLastAnalyzed = lastAnalyzedIndex !== null && i === lastAnalyzedIndex;
-            const isAnalyzed = lastAnalyzedIndex !== null && i < lastAnalyzedIndex;
-            const isExcluded = ch.bookIndex !== undefined && (excludedBooks?.has(ch.bookIndex) ?? false);
-            const prevCh = chapters[i - 1];
-            const showBookDivider = ch.bookTitle !== undefined && ch.bookIndex !== prevCh?.bookIndex;
-            return (
-              <li key={ch.id}>
-                {showBookDivider && (
-                  <button
-                    onClick={() => ch.bookIndex !== undefined && onToggleBook?.(ch.bookIndex)}
-                    className="mt-3 mb-1 w-full flex items-center gap-2 group"
-                    title={isExcluded ? 'Click to include this book' : 'Click to exclude this book'}
-                  >
-                    <div className="flex-1 h-px bg-zinc-800" />
-                    <span className={`text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap transition-colors ${
-                      isExcluded ? 'text-zinc-700 line-through' : 'text-zinc-600 group-hover:text-zinc-500'
-                    }`}>
-                      {ch.bookTitle}
-                    </span>
-                    <div className="flex-1 h-px bg-zinc-800" />
-                  </button>
-                )}
-                <button
-                  onClick={() => {
-                    onChange(i);
-                    if (mode === 'location') setLocationInput(String(chapterIndexToLocation(i, chapters)));
-                  }}
-                  className={`
-                    w-full text-left px-2.5 py-1.5 rounded-md text-xs transition-colors
-                    ${isExcluded
-                      ? 'text-zinc-800 cursor-default'
-                      : isRebuildingThis
-                      ? 'bg-violet-500/10 text-violet-400'
-                      : i === currentIndex
-                      ? 'bg-zinc-800 text-zinc-100 font-medium'
-                      : hasSnapshot
-                      ? 'text-amber-600/70 hover:bg-amber-950/30 hover:text-amber-500'
-                      : isAnalyzed || isLastAnalyzed
-                      ? 'text-zinc-400 hover:bg-zinc-800/60'
-                      : i < currentIndex
-                      ? 'text-zinc-500 hover:bg-zinc-800/60'
-                      : 'text-zinc-700 cursor-default'
-                    }
-                  `}
-                  disabled={i > currentIndex || isExcluded}
-                  title={hasSnapshot ? 'Snapshot saved — click to view' : undefined}
-                >
-                  <span className="mr-1.5 text-[10px]">
-                    {isExcluded
-                      ? '✗'
-                      : isRebuildingThis
-                      ? '↻'
-                      : isLastAnalyzed
-                      ? '★'
-                      : hasSnapshot
-                      ? '◆'
-                      : isAnalyzed
-                      ? '✓'
-                      : i === currentIndex
-                      ? '▸'
-                      : i < currentIndex
-                      ? '·'
-                      : '○'}
-                  </span>
-                  {ch.title}
-                  {mode === 'location' && (
-                    <span className="ml-1 text-zinc-600">
-                      ~{chapterIndexToLocation(i, chapters).toLocaleString()}
-                    </span>
+
+        {isOmnibus ? (
+          <ul className="space-y-1.5">
+            {[...bookGroups.entries()].map(([bookIdx, { bookTitle, items }]) => {
+              const isExpanded = expandedBooks.has(bookIdx);
+              const isExcluded = excludedBooks?.has(bookIdx) ?? false;
+              const analyzedCount = items.filter(({ globalIndex }) =>
+                lastAnalyzedIndex !== null && globalIndex <= lastAnalyzedIndex,
+              ).length;
+              const isCurrent = items.some(({ globalIndex }) => globalIndex === currentIndex);
+
+              return (
+                <li key={bookIdx}>
+                  {/* Book header */}
+                  <div className={`flex items-center rounded-lg border transition-colors ${
+                    isExcluded
+                      ? 'border-zinc-800/40 bg-transparent'
+                      : isCurrent
+                      ? 'border-amber-500/20 bg-amber-500/5'
+                      : 'border-zinc-800 bg-zinc-800/20 hover:bg-zinc-800/40'
+                  }`}>
+                    <button
+                      onClick={() => toggleExpand(bookIdx)}
+                      className="flex-1 flex items-center gap-2 px-2.5 py-2 text-left min-w-0"
+                    >
+                      <span className={`flex-shrink-0 text-[10px] ${isExcluded ? 'text-zinc-700' : isExpanded ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                        {isExpanded ? '▾' : '▸'}
+                      </span>
+                      <span className={`text-xs font-semibold truncate ${isExcluded ? 'text-zinc-700 line-through' : isCurrent ? 'text-amber-400/80' : 'text-zinc-400'}`}>
+                        {bookTitle}
+                      </span>
+                    </button>
+                    <div className="flex items-center gap-1.5 pr-2 flex-shrink-0">
+                      {!isExcluded && (
+                        <span className="text-[10px] text-zinc-600">
+                          {analyzedCount > 0 ? `${analyzedCount}/${items.length}` : `${items.length} ch.`}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => onToggleBook?.(bookIdx)}
+                        title={isExcluded ? 'Include this book' : 'Exclude this book'}
+                        className={`text-[10px] w-5 h-5 flex items-center justify-center rounded border transition-colors ${
+                          isExcluded
+                            ? 'border-zinc-800 text-zinc-700 hover:border-zinc-700 hover:text-zinc-500'
+                            : 'border-zinc-700 text-zinc-500 hover:border-red-900/60 hover:text-red-500/60'
+                        }`}
+                      >
+                        {isExcluded ? '✗' : '✓'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Chapters (expanded) */}
+                  {isExpanded && (
+                    <ul className="mt-0.5 ml-2 space-y-0.5 border-l border-zinc-800 pl-2">
+                      {items.map(({ ch, globalIndex }) => (
+                        <ChapterItem key={ch.id} ch={ch} globalIndex={globalIndex} isExcluded={isExcluded} {...itemProps} />
+                      ))}
+                    </ul>
                   )}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          /* Flat list for non-omnibus */
+          <ul className="space-y-0.5">
+            {chapters.map((ch, i) => (
+              <ChapterItem key={ch.id} ch={ch} globalIndex={i} isExcluded={false} {...itemProps} />
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );
