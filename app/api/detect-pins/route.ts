@@ -1,25 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { Agent, fetch as undiciFetch } from 'undici';
 import type { LocationPin } from '@/types';
+
+const ollamaAgent = new Agent({ headersTimeout: 0, bodyTimeout: 0 });
 
 
 const SUPPORTED_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 
 function buildPrompt(locations: string[]): string {
-  return `This is a map image. I have a list of location names that characters in a story occupy. Your job is to find each location name as written text on the map and return its approximate center position.
+  return `This is a fantasy/story map image. Your task is to locate specific place names that are printed as visible text labels directly on the map image, and return their positions as percentages of the image dimensions.
 
-Return ONLY a JSON object — no prose, no markdown fences. Schema:
-{"pins": {"Location Name": {"x": 45.2, "y": 23.1}, ...}}
+Coordinate system:
+- x = 0 means the LEFT edge of the image, x = 100 means the RIGHT edge
+- y = 0 means the TOP edge of the image, y = 100 means the BOTTOM edge
+- Example: a label in the upper-left quarter might be x=20, y=15
+- Example: a label near the bottom-center might be x=50, y=85
 
-Where x and y are percentages of the image width and height respectively (0 = left/top, 100 = right/bottom).
+Return ONLY a valid JSON object with no prose, no markdown, no explanation:
+{"pins": {"Exact Label Text": {"x": 34.5, "y": 61.2}, ...}}
 
-Rules:
-- Only include locations you can actually read on the map as visible text labels.
-- If a name does not appear on the map, omit it entirely.
-- Partial matches are fine (e.g. "The Eyrie" matches a label that says "Eyrie").
-- x and y should point to the center of the text label.
+Strict rules:
+- ONLY include a location if you can clearly read its name as printed text somewhere on the map image.
+- Do NOT guess or estimate for names you cannot see written on the map.
+- Do NOT include a location if it is not visibly labelled.
+- Partial matches are acceptable (e.g. "Tar Valon" matches a label reading "Tar Valon" or "TAR VALON").
+- x and y must point to the center of the text label itself, not the territory it represents.
+- If none of the locations are labelled on the map, return {"pins": {}}.
 
-Locations to find:
+Locations to find (look for these as written text on the map):
 ${locations.map((l) => `- ${l}`).join('\n')}`;
 }
 
@@ -44,13 +53,10 @@ async function callLocal(imageDataUrl: string, prompt: string): Promise<string> 
   const baseUrl = process.env.LOCAL_MODEL_URL ?? 'http://localhost:11434/v1';
   const model = process.env.LOCAL_VISION_MODEL_NAME ?? 'qwen2.5vl:7b';
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5 * 60 * 1000);
-
-  const res = await fetch(`${baseUrl}/chat/completions`, {
+  const res = await undiciFetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    signal: controller.signal,
+    dispatcher: ollamaAgent,
     body: JSON.stringify({
       model,
       max_tokens: 1024,
@@ -64,10 +70,10 @@ async function callLocal(imageDataUrl: string, prompt: string): Promise<string> 
         },
       ],
     }),
-  }).finally(() => clearTimeout(timer));
+  } as Parameters<typeof undiciFetch>[1]);
 
   if (!res.ok) throw new Error(`Local model error (${res.status}): ${await res.text()}`);
-  const data = await res.json();
+  const data = await res.json() as { choices?: { message?: { content?: string } }[] };
   const text = data.choices?.[0]?.message?.content;
   if (!text) throw new Error('No content in local model response.');
   return text;
