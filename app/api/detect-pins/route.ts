@@ -79,23 +79,12 @@ function extractPins(raw: string, imageWidth?: number, imageHeight?: number): Re
   const normW = needsNorm ? (imageWidth ?? Math.max(...allX)) : 100;
   const normH = needsNorm ? (imageHeight ?? Math.max(...allY)) : 100;
 
-  let yVals = allY.map((y) => needsNorm ? (y / normH) * 100 : y);
-
-  // Detect letterbox y-bias: llama3.2-vision (and similar) letterboxes non-square images
-  // into a square canvas before processing, shifting all y coordinates upward.
-  // Symptom: median y > 55 AND min y > 15. Correct with linear de-letterbox transform.
-  const sortedY = [...yVals].sort((a, b) => a - b);
-  const medianY = sortedY[Math.floor(sortedY.length / 2)];
-  const minY = sortedY[0];
-  const needsYCorrection = yVals.length >= 2 && medianY > 55 && minY > 15;
-
   const pins: Record<string, LocationPin> = {};
   const entries = Object.entries(rawPins);
   for (let i = 0; i < entries.length; i++) {
     const [name, pos] = entries[i];
     const x = needsNorm ? (pos.x / normW) * 100 : pos.x;
-    let y = yVals[i];
-    if (needsYCorrection) y = (y - 10) / 1.4; // remove letterbox padding offset
+    const y = needsNorm ? (pos.y / normH) * 100 : pos.y;
     pins[name] = {
       x: Math.max(0, Math.min(100, x)),
       y: Math.max(0, Math.min(100, y)),
