@@ -8,9 +8,12 @@ interface Props {
 }
 
 const DEFAULT_SERVER = 'http://localhost:8080';
+const STORAGE_KEY = 'calibre-server-url';
 
 export default function CalibreLibrary({ onFile }: Props) {
-  const [serverUrl, setServerUrl] = useState(DEFAULT_SERVER);
+  const [serverUrl, setServerUrl] = useState(() =>
+    (typeof window !== 'undefined' && localStorage.getItem(STORAGE_KEY)) || DEFAULT_SERVER
+  );
   const [libraryId, setLibraryId] = useState('');
   const [libraries, setLibraries] = useState<string[]>([]);
   const [connected, setConnected] = useState(false);
@@ -27,6 +30,14 @@ export default function CalibreLibrary({ onFile }: Props) {
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
 
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Auto-connect on mount if a saved URL exists
+  useEffect(() => {
+    if (typeof window !== 'undefined' && localStorage.getItem(STORAGE_KEY)) {
+      handleConnect();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Fetch books from the proxy API
   const fetchBooks = useCallback(async (q: string, off: number, libId: string, srv: string) => {
@@ -70,6 +81,7 @@ export default function CalibreLibrary({ onFile }: Props) {
       const defaultLib = data.defaultLibrary ?? data.libraries?.[0] ?? '';
       setLibraryId(defaultLib);
       setConnected(true);
+      localStorage.setItem(STORAGE_KEY, serverUrl.trim());
       fetchBooks('', 0, defaultLib, serverUrl.trim());
     } catch (err: unknown) {
       setConnectError(err instanceof Error ? err.message : 'Connection failed');
@@ -205,7 +217,7 @@ export default function CalibreLibrary({ onFile }: Props) {
         )}
 
         <button
-          onClick={() => { setConnected(false); setBooks([]); setSearch(''); }}
+          onClick={() => { setConnected(false); setBooks([]); setSearch(''); localStorage.removeItem(STORAGE_KEY); }}
           className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors whitespace-nowrap"
         >
           Disconnect

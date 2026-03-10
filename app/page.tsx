@@ -24,6 +24,7 @@ interface StoredBookState {
   lastAnalyzedIndex: number; // -1 = series carry-forward
   result: AnalysisResult;
   snapshots: Snapshot[];
+  excludedBooks?: number[];
 }
 
 interface SavedBookEntry {
@@ -153,6 +154,11 @@ export default function Home() {
     setExcludedBooks((prev) => {
       const next = new Set(prev);
       if (next.has(bookIndex)) next.delete(bookIndex); else next.add(bookIndex);
+      if (book && storedRef.current) {
+        const updated = { ...storedRef.current, excludedBooks: [...next] };
+        storedRef.current = updated;
+        saveStored(book.title, book.author, updated);
+      }
       return next;
     });
   }
@@ -168,7 +174,7 @@ export default function Home() {
   function activateBook(parsed: ParsedEbook, initialStored: StoredBookState | null) {
     storedRef.current = initialStored;
     seriesBaseRef.current = initialStored?.lastAnalyzedIndex === -1 ? initialStored.result : null;
-    setExcludedBooks(new Set());
+    setExcludedBooks(initialStored?.excludedBooks ? new Set(initialStored.excludedBooks) : new Set());
     setMapState(loadMapState(parsed.title, parsed.author));
     setBook(parsed);
     setViewingSnapshotIndex(null);
