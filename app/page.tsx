@@ -911,6 +911,7 @@ export default function Home() {
                 characters={characters}
                 bookTitle={book.title}
                 mapState={mapState}
+                snapshots={stored?.snapshots ?? []}
                 onMapStateChange={(state) => {
                   setMapState(state);
                   saveMapState(book.title, book.author, state);

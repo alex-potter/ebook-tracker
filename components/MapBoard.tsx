@@ -1,13 +1,15 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import type { Character, LocationPin, MapState } from '@/types';
+import type { Character, LocationPin, MapState, Snapshot } from '@/types';
+import SubwayMap from './SubwayMap';
 
 interface Props {
   characters: Character[];
   bookTitle?: string;
   mapState: MapState | null;
   onMapStateChange: (state: MapState) => void;
+  snapshots?: Snapshot[];
 }
 
 /** Resize a dataURL to fit within maxDim×maxDim, preserving aspect ratio. */
@@ -138,13 +140,13 @@ function charImportanceColor(importance: Character['importance']): string {
   return importance === 'main' ? '#f59e0b' : importance === 'secondary' ? '#3b82f6' : '#71717a';
 }
 
-export default function MapBoard({ characters, bookTitle, mapState, onMapStateChange }: Props) {
+export default function MapBoard({ characters, bookTitle, mapState, onMapStateChange, snapshots = [] }: Props) {
   const [placingLocation, setPlacingLocation] = useState<string | null>(null);
   const [activePin, setActivePin] = useState<string | null>(null);
   const [activeCharPin, setActiveCharPin] = useState<string | null>(null);
   const [charMode, setCharMode] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [uploadTab, setUploadTab] = useState<'drop' | 'url'>('drop');
+  const [showUploadPanel, setShowUploadPanel] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [urlLoading, setUrlLoading] = useState(false);
   const [urlError, setUrlError] = useState<string | null>(null);
@@ -188,6 +190,7 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
       const dataUrl = e.target?.result as string;
       onMapStateChange({ imageDataUrl: dataUrl, pins: mapState?.pins ?? {} });
       setSuggestions(null);
+      setShowUploadPanel(false);
     };
     reader.readAsDataURL(file);
   }
@@ -208,6 +211,7 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
       onMapStateChange({ imageDataUrl: data.dataUrl, pins: mapState?.pins ?? {} });
       setSuggestions(null);
       setUrlInput('');
+      setShowUploadPanel(false);
     } catch (err) {
       setUrlError(err instanceof Error ? err.message : 'Failed to load image');
     } finally {
@@ -329,86 +333,80 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
     setSuggestions(Object.keys(remaining).length ? remaining : null);
   }
 
-  // ── Upload prompt ─────────────────────────────────────────────────────────────
+  // ── No-image state: show subway map with upload overlay ───────────────────────
   if (!mapState) {
     const searchQuery = encodeURIComponent(`${bookTitle ?? ''} map`.trim());
     const searchUrl = `https://www.google.com/search?tbm=isch&q=${searchQuery}`;
 
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-5">
-        <div className="text-4xl opacity-20">🗺</div>
-        <div className="text-center">
-          <p className="text-zinc-300 font-medium mb-1">Add a map</p>
-          <p className="text-sm text-zinc-600">Place character pins on an image of the world.</p>
+      <div
+        className={`relative h-full min-h-0 rounded-xl border overflow-hidden ${isDragging ? 'border-amber-500/40' : 'border-zinc-800'}`}
+        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={handleDrop}
+      >
+        {/* Subway map fills full height */}
+        <div className="h-full bg-zinc-900">
+          <SubwayMap snapshots={snapshots} />
         </div>
 
-        {/* Tabs */}
-        <div className="w-full max-w-sm">
-          <div className="flex rounded-lg overflow-hidden border border-zinc-700 mb-3">
-            {(['drop', 'url'] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => { setUploadTab(t); setUrlError(null); }}
-                className={`flex-1 py-1.5 text-xs font-medium transition-colors ${
-                  uploadTab === t ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
+        {/* Upload panel — bottom-right overlay */}
+        <div className="absolute bottom-3 right-3 z-10">
+          {showUploadPanel ? (
+            <div className="bg-zinc-900/95 border border-zinc-700 rounded-xl shadow-2xl backdrop-blur-sm p-3.5 flex flex-col gap-2.5 w-64">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-zinc-300">Add a real map image</p>
+                <button onClick={() => setShowUploadPanel(false)} className="text-zinc-600 hover:text-zinc-400 text-xs">✕</button>
+              </div>
+
+              {/* Drop zone */}
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className={`h-20 rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors ${
+                  isDragging ? 'border-amber-500 bg-amber-500/5 text-amber-400' : 'border-zinc-700 hover:border-zinc-600 hover:bg-zinc-800/40 text-zinc-500'
                 }`}
               >
-                {t === 'drop' ? 'File / drag' : 'Image URL'}
-              </button>
-            ))}
-          </div>
+                <span className="text-base opacity-50">↑</span>
+                <p className="text-[10px]">Drop / click to upload</p>
+              </div>
 
-          {uploadTab === 'drop' ? (
-            <div
-              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-              onDragLeave={() => setIsDragging(false)}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className={`h-32 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors ${
-                isDragging ? 'border-amber-500 bg-amber-500/5 text-amber-400' : 'border-zinc-700 hover:border-zinc-600 hover:bg-zinc-800/30 text-zinc-500'
-              }`}
-            >
-              <span className="text-xl opacity-50">↑</span>
-              <p className="text-xs">Drop a file or image from your browser</p>
-              <p className="text-[10px] text-zinc-700">or click to browse files</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <div className="flex gap-2">
+              {/* URL input */}
+              <div className="flex gap-1.5">
                 <input
                   type="url"
                   value={urlInput}
                   onChange={(e) => { setUrlInput(e.target.value); setUrlError(null); }}
                   onKeyDown={(e) => { if (e.key === 'Enter') loadFromUrl(urlInput); }}
-                  placeholder="https://example.com/map.jpg"
-                  className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                  placeholder="Or paste image URL…"
+                  className="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
                 />
                 <button
                   onClick={() => loadFromUrl(urlInput)}
                   disabled={urlLoading || !urlInput.trim()}
-                  className="px-3 py-2 rounded-lg bg-amber-500 text-zinc-900 text-xs font-semibold hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                  className="px-2.5 py-1.5 rounded-lg bg-amber-500 text-zinc-900 text-xs font-semibold hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
                 >
                   {urlLoading ? '…' : 'Load'}
                 </button>
               </div>
               {urlError && <p className="text-xs text-red-500">{urlError}</p>}
-              <p className="text-[10px] text-zinc-700">Right-click any image online → "Copy image address", then paste here</p>
-            </div>
-          )}
-        </div>
 
-        {/* Search launcher */}
-        <div className="text-center">
-          <p className="text-xs text-zinc-700 mb-2">Need to find a map?</p>
-          <a
-            href={searchUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300 transition-colors"
-          >
-            Search "{bookTitle ?? ''} map" in Google Images ↗
-          </a>
-          <p className="text-[10px] text-zinc-700 mt-1.5">Then drag the image here, or copy its URL to the URL tab</p>
+              <a
+                href={searchUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-center text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors"
+              >
+                Search "{bookTitle ?? ''} map" in Google Images ↗
+              </a>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowUploadPanel(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-zinc-800/90 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 text-xs font-medium rounded-lg border border-zinc-700 transition-colors backdrop-blur-sm shadow-lg"
+            >
+              <span className="text-[10px]">🗺️</span> Add map image
+            </button>
+          )}
         </div>
 
         <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
