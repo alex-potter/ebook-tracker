@@ -40,6 +40,7 @@ interface TimelineEntry {
   chapterIndex: number;
   chapterTitle: string;
   recentEvents: string;
+  location?: string;
 }
 
 interface Props {
@@ -70,6 +71,7 @@ export default function CharacterModal({ character, snapshots, chapterTitles, on
         chapterIndex: snap.index,
         chapterTitle: chapterTitles?.[snap.index] ?? `Chapter ${snap.index + 1}`,
         recentEvents: ch.recentEvents,
+        location: ch.currentLocation || undefined,
       });
     }
     return entries.reverse(); // newest first
@@ -220,6 +222,9 @@ export default function CharacterModal({ character, snapshots, chapterTitles, on
                       <p className="text-[11px] font-semibold text-zinc-500 mb-1">
                         Ch. {entry.chapterIndex + 1} — {entry.chapterTitle}
                       </p>
+                      {entry.location && entry.location !== 'Unknown' && (
+                        <p className="text-[11px] text-zinc-600 mb-1">📍 {entry.location}</p>
+                      )}
                       <p className="text-sm text-zinc-300 leading-relaxed">{entry.recentEvents}</p>
                     </li>
                   ))}
