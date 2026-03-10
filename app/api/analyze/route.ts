@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { Agent, fetch as undiciFetch } from 'undici';
 import type { AnalysisResult } from '@/types';
+
+// Undici agent with no headers/body timeout — our AbortController handles cancellation
+const ollamaAgent = new Agent({ headersTimeout: 0, bodyTimeout: 0 });
 
 
 const anthropic = new Anthropic();
@@ -241,14 +245,12 @@ async function callLocal(system: string, userPrompt: string): Promise<string> {
   const baseUrl = process.env.LOCAL_MODEL_URL ?? 'http://localhost:11434/v1';
   const model = process.env.LOCAL_MODEL_NAME ?? 'llama3.1:8b';
 
-  // Use a 10-minute AbortController timeout to avoid undici's default 300s headers timeout
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10 * 60 * 1000);
-
-  const res = await fetch(`${baseUrl}/chat/completions`, {
+  // Use undici fetch with a custom agent — disables the default 300s headersTimeout
+  // that fires independently of AbortController for slow local models.
+  const res = await undiciFetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    signal: controller.signal,
+    dispatcher: ollamaAgent,
     body: JSON.stringify({
       model,
       max_tokens: 32768,
@@ -257,14 +259,14 @@ async function callLocal(system: string, userPrompt: string): Promise<string> {
         { role: 'user', content: userPrompt },
       ],
     }),
-  }).finally(() => clearTimeout(timer));
+  } as Parameters<typeof undiciFetch>[1]);
 
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`Local model error (${res.status}): ${err}`);
   }
 
-  const data = await res.json();
+  const data = await res.json() as { choices?: { message?: { content?: string } }[] };
   const text = data.choices?.[0]?.message?.content;
   if (!text) throw new Error('No content in local model response.');
   return text;
