@@ -36,6 +36,21 @@ function initials(name: string): string {
   return name.split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('');
 }
 
+/** Returns true if any name/alias/name-part of `c` appears as a whole word in `text` */
+function mentionedIn(text: string, c: { name: string; aliases: string[] }): boolean {
+  const candidates = [
+    c.name,
+    ...(c.aliases ?? []),
+    // Individual words of the full name (skip short particles like "of", "the")
+    ...c.name.split(/\s+/).filter((w) => w.length >= 4),
+  ];
+  return candidates.some((term) => {
+    // Escape regex special chars, then wrap in word boundaries
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(?<![a-zA-Z])${escaped}(?![a-zA-Z])`, 'i').test(text);
+  });
+}
+
 interface TimelineEntry {
   chapterIndex: number;
   chapterTitle: string;
@@ -68,9 +83,8 @@ export default function CharacterModal({ character, snapshots, chapterTitles, on
       );
       if (!ch?.recentEvents || ch.recentEvents === lastEvents) continue;
       lastEvents = ch.recentEvents;
-      const eventsLower = ch.recentEvents.toLowerCase();
       const interactions = snap.result.characters
-        .filter((c) => c.name.toLowerCase() !== character.name.toLowerCase() && eventsLower.includes(c.name.toLowerCase()))
+        .filter((c) => c.name.toLowerCase() !== character.name.toLowerCase() && mentionedIn(ch.recentEvents, c))
         .map((c) => c.name);
       entries.push({
         chapterIndex: snap.index,
