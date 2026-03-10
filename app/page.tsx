@@ -427,6 +427,14 @@ export default function Home() {
         setRebuildProgress({ current: i - startIndex + 1, total });
         const ch = book.chapters[i];
         if (ch.bookIndex !== undefined && excludedBooks.has(ch.bookIndex)) continue;
+        // Skip structural dividers (part headers, etc.) with very little text
+        if (ch.text.trim().length < 200 && accumulated) {
+          snapshots = upsertSnapshot(snapshots, i, accumulated);
+          const partial: StoredBookState = { lastAnalyzedIndex: i, result: accumulated, snapshots };
+          storedRef.current = partial;
+          saveStored(book.title, book.author, partial);
+          continue;
+        }
         accumulated = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated);
         snapshots = upsertSnapshot(snapshots, i, accumulated);
         const partial: StoredBookState = { lastAnalyzedIndex: i, result: accumulated, snapshots };
@@ -460,6 +468,13 @@ export default function Home() {
         setRebuildProgress({ current: i + 1, total: currentIndex + 1 });
         const ch = book.chapters[i];
         if (ch.bookIndex !== undefined && excludedBooks.has(ch.bookIndex)) continue;
+        if (ch.text.trim().length < 200 && accumulated) {
+          snapshots = upsertSnapshot(snapshots, i, accumulated);
+          const partial: StoredBookState = { lastAnalyzedIndex: i, result: accumulated, snapshots };
+          storedRef.current = partial;
+          saveStored(book.title, book.author, partial);
+          continue;
+        }
         const chapter = { title: ch.title, text: ch.text };
         accumulated = await analyzeChapter(book.title, book.author, chapter, accumulated);
         snapshots = upsertSnapshot(snapshots, i, accumulated);
