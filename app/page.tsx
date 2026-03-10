@@ -433,11 +433,13 @@ export default function Home() {
         setRebuildProgress({ current: i - startIndex + 1, total });
         const ch = book.chapters[i];
         if (ch.bookIndex !== undefined && excludedBooks.has(ch.bookIndex)) continue;
-        if (isFrontMatter(ch) && accumulated) {
-          snapshots = upsertSnapshot(snapshots, i, accumulated);
-          const partial: StoredBookState = { lastAnalyzedIndex: i, result: accumulated, snapshots };
-          storedRef.current = partial;
-          saveStored(book.title, book.author, partial);
+        if (isFrontMatter(ch)) {
+          if (accumulated) {
+            snapshots = upsertSnapshot(snapshots, i, accumulated);
+            const partial: StoredBookState = { lastAnalyzedIndex: i, result: accumulated, snapshots };
+            storedRef.current = partial;
+            saveStored(book.title, book.author, partial);
+          }
           continue;
         }
         accumulated = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated);
@@ -473,11 +475,13 @@ export default function Home() {
         setRebuildProgress({ current: i + 1, total: currentIndex + 1 });
         const ch = book.chapters[i];
         if (ch.bookIndex !== undefined && excludedBooks.has(ch.bookIndex)) continue;
-        if (isFrontMatter(ch) && accumulated) {
-          snapshots = upsertSnapshot(snapshots, i, accumulated);
-          const partial: StoredBookState = { lastAnalyzedIndex: i, result: accumulated, snapshots };
-          storedRef.current = partial;
-          saveStored(book.title, book.author, partial);
+        if (isFrontMatter(ch)) {
+          if (accumulated) {
+            snapshots = upsertSnapshot(snapshots, i, accumulated);
+            const partial: StoredBookState = { lastAnalyzedIndex: i, result: accumulated, snapshots };
+            storedRef.current = partial;
+            saveStored(book.title, book.author, partial);
+          }
           continue;
         }
         const chapter = { title: ch.title, text: ch.text };
