@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { Character } from '@/types';
+import CharacterModal from './CharacterModal';
 
 const STATUS_CONFIG = {
   alive:     { label: 'Alive',     color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', dot: 'bg-emerald-400' },
@@ -42,14 +43,18 @@ interface Props {
 
 export default function CharacterCard({ character }: Props) {
   const [expanded, setExpanded] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
   const status = STATUS_CONFIG[character.status] ?? STATUS_CONFIG.unknown;
   const importance = IMPORTANCE_CONFIG[character.importance] ?? IMPORTANCE_CONFIG.minor;
 
   return (
+    <>
+      {modalOpen && <CharacterModal character={character} onClose={() => setModalOpen(false)} />}
     <div
+      onClick={() => setModalOpen(true)}
       className={`
-        bg-zinc-900 rounded-xl border overflow-hidden transition-colors duration-150
-        ${character.importance === 'main' ? 'border-amber-500/30' : 'border-zinc-800'}
+        bg-zinc-900 rounded-xl border overflow-hidden transition-colors duration-150 cursor-pointer
+        ${character.importance === 'main' ? 'border-amber-500/30 hover:border-amber-500/50' : 'border-zinc-800 hover:border-zinc-700'}
       `}
     >
       {/* Header */}
@@ -104,7 +109,7 @@ export default function CharacterCard({ character }: Props) {
       {character.relationships.length > 0 && (
         <div className="px-4 pb-4">
           <button
-            onClick={() => setExpanded(!expanded)}
+            onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
             className="text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1 transition-colors"
           >
             <span>{expanded ? '▾' : '▸'}</span>
@@ -135,5 +140,6 @@ export default function CharacterCard({ character }: Props) {
         </p>
       </div>
     </div>
+    </>
   );
 }
