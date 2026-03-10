@@ -391,26 +391,24 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
               Scanning map…
             </span>
           )}
+          <button
+            onClick={async () => {
+              const { width, height } = await resizeDataUrl(mapState.imageDataUrl, 1024);
+              const data = JSON.stringify({ imageWidth: width, imageHeight: height, pins: mapState.pins }, null, 2);
+              await navigator.clipboard.writeText(data);
+              alert('Pin debug data copied to clipboard.');
+            }}
+            className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
+          >
+            Copy debug data
+          </button>
           {pinnedCount > 0 && !placingLocation && (
-            <>
-              <button
-                onClick={async () => {
-                  const { width, height } = await resizeDataUrl(mapState.imageDataUrl, 1024);
-                  const data = JSON.stringify({ imageWidth: width, imageHeight: height, pins: mapState.pins }, null, 2);
-                  await navigator.clipboard.writeText(data);
-                  alert('Pin debug data copied to clipboard.');
-                }}
-                className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
-              >
-                Copy debug data
-              </button>
-              <button
-                onClick={() => { if (confirm('Clear all pin placements?')) onMapStateChange({ ...mapState, pins: {} }); }}
-                className="text-xs text-zinc-600 hover:text-red-400 transition-colors"
-              >
-                Clear pins
-              </button>
-            </>
+            <button
+              onClick={() => { if (confirm('Clear all pin placements?')) onMapStateChange({ ...mapState, pins: {} }); }}
+              className="text-xs text-zinc-600 hover:text-red-400 transition-colors"
+            >
+              Clear pins
+            </button>
           )}
           <button
             onClick={() => fileInputRef.current?.click()}
