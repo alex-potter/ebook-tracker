@@ -41,6 +41,7 @@ interface TimelineEntry {
   chapterTitle: string;
   recentEvents: string;
   location?: string;
+  interactions: string[]; // other character names mentioned in recentEvents
 }
 
 interface Props {
@@ -67,11 +68,16 @@ export default function CharacterModal({ character, snapshots, chapterTitles, on
       );
       if (!ch?.recentEvents || ch.recentEvents === lastEvents) continue;
       lastEvents = ch.recentEvents;
+      const eventsLower = ch.recentEvents.toLowerCase();
+      const interactions = snap.result.characters
+        .filter((c) => c.name.toLowerCase() !== character.name.toLowerCase() && eventsLower.includes(c.name.toLowerCase()))
+        .map((c) => c.name);
       entries.push({
         chapterIndex: snap.index,
         chapterTitle: chapterTitles?.[snap.index] ?? `Chapter ${snap.index + 1}`,
         recentEvents: ch.recentEvents,
         location: ch.currentLocation || undefined,
+        interactions,
       });
     }
     return entries.reverse(); // newest first
@@ -224,6 +230,16 @@ export default function CharacterModal({ character, snapshots, chapterTitles, on
                       </p>
                       {entry.location && entry.location !== 'Unknown' && (
                         <p className="text-[11px] text-zinc-600 mb-1">📍 {entry.location}</p>
+                      )}
+                      {entry.interactions.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-2">
+                          {entry.interactions.map((name) => (
+                            <span key={name} className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md font-medium ${nameColor(name)}`}>
+                              <span className="opacity-60">{initials(name)}</span>
+                              {name}
+                            </span>
+                          ))}
+                        </div>
                       )}
                       <p className="text-sm text-zinc-300 leading-relaxed">{entry.recentEvents}</p>
                     </li>
