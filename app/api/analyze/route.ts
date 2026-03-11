@@ -296,6 +296,40 @@ function deduplicateLocations(locs: AnalysisResult['locations']): AnalysisResult
     }
   }
 
+  // Cross-reference pass: merge any two groups that share a canonical name or alias
+  // (handles cases where processing order prevented alias-based merging earlier)
+  function mergeInto(target: Entry, source: Entry) {
+    if (source.canonical.length > target.canonical.length) target.canonical = source.canonical;
+    target.aliases = mergeAliases(target.aliases, [...source.aliases, source.canonical !== target.canonical ? source.canonical : ''].filter(Boolean), target.canonical);
+    if (source.description.length > target.description.length) target.description = source.description;
+    if (!target.arc && source.arc) target.arc = source.arc;
+    if (source.recentEvents && (!target.recentEvents || source.recentEvents.length > target.recentEvents.length)) target.recentEvents = source.recentEvents;
+    target.relationships = mergeRels(target.relationships, source.relationships);
+  }
+  let again = true;
+  while (again) {
+    again = false;
+    outer: for (const [keyA, groupA] of groups) {
+      const normsA = new Set([groupA.canonical, ...groupA.aliases].map(normLoc));
+      for (const [keyB, groupB] of groups) {
+        if (keyA === keyB) continue;
+        const normsB = [groupB.canonical, ...groupB.aliases].map(normLoc);
+        if (normsB.some((n) => normsA.has(n))) {
+          // Keep the entry with the longer canonical name (more specific); merge the other in
+          const [keepKey, keep, drop, dropKey] =
+            groupA.canonical.length >= groupB.canonical.length
+              ? [keyA, groupA, groupB, keyB]
+              : [keyB, groupB, groupA, keyA];
+          mergeInto(keep, drop);
+          registerAliases(keepKey, keep.canonical, keep.aliases);
+          groups.delete(dropKey);
+          again = true;
+          break outer;
+        }
+      }
+    }
+  }
+
   return [...groups.values()].map(({ canonical, aliases, description, arc, recentEvents, relationships }) => ({
     name: canonical,
     ...(aliases.length > 0 ? { aliases } : {}),
