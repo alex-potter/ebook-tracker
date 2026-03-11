@@ -361,9 +361,10 @@ function recoverPartialJson(raw: string, previousResult?: AnalysisResult): Analy
 }
 
 // --- Anthropic provider ---
-async function callAnthropic(system: string, userPrompt: string): Promise<string> {
-  const response = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
+async function callAnthropic(system: string, userPrompt: string, opts: { apiKey?: string; model?: string } = {}): Promise<string> {
+  const client = opts.apiKey ? new Anthropic({ apiKey: opts.apiKey }) : anthropic;
+  const response = await client.messages.create({
+    model: opts.model ?? 'claude-haiku-4-5-20251001',
     max_tokens: 8192,
     system,
     messages: [{ role: 'user', content: userPrompt }],
@@ -374,9 +375,9 @@ async function callAnthropic(system: string, userPrompt: string): Promise<string
 }
 
 // --- Local / OpenAI-compatible provider (Ollama, LM Studio, etc.) ---
-async function callLocal(system: string, userPrompt: string): Promise<string> {
-  const baseUrl = process.env.LOCAL_MODEL_URL ?? 'http://localhost:11434/v1';
-  const model = process.env.LOCAL_MODEL_NAME ?? 'llama3.1:8b';
+async function callLocal(system: string, userPrompt: string, opts: { baseUrl?: string; model?: string } = {}): Promise<string> {
+  const baseUrl = opts.baseUrl ?? process.env.LOCAL_MODEL_URL ?? 'http://localhost:11434/v1';
+  const model = opts.model ?? process.env.LOCAL_MODEL_NAME ?? 'llama3.1:8b';
 
   // Use undici fetch with a custom agent — disables the default 300s headersTimeout
   // that fires independently of AbortController for slow local models.
@@ -405,23 +406,56 @@ async function callLocal(system: string, userPrompt: string): Promise<string> {
   return text;
 }
 
+/** GET /api/analyze — returns the server's AI provider status (no secrets exposed) */
+export async function GET() {
+  const hasEnvKey = !!process.env.ANTHROPIC_API_KEY;
+  const usesLocal = process.env.USE_LOCAL_MODEL === 'true';
+  return NextResponse.json({
+    serverConfigured: hasEnvKey || usesLocal,
+    provider: usesLocal ? 'ollama' : (hasEnvKey ? 'anthropic' : null),
+    model: usesLocal ? (process.env.LOCAL_MODEL_NAME ?? null) : (hasEnvKey ? null : null),
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { chaptersRead, newChapters, currentChapterTitle, bookTitle, bookAuthor, previousResult } =
-      await req.json() as {
-        chaptersRead?: Array<{ title: string; text: string }>;
-        newChapters?: Array<{ title: string; text: string }>;
-        currentChapterTitle: string;
-        bookTitle: string;
-        bookAuthor: string;
-        previousResult?: AnalysisResult;
-      };
+    const body = await req.json() as {
+      chaptersRead?: Array<{ title: string; text: string }>;
+      newChapters?: Array<{ title: string; text: string }>;
+      currentChapterTitle: string;
+      bookTitle: string;
+      bookAuthor: string;
+      previousResult?: AnalysisResult;
+      // Client-provided AI settings — used when server has no env config
+      _provider?: 'anthropic' | 'ollama';
+      _apiKey?: string;
+      _ollamaUrl?: string;
+      _model?: string;
+    };
+    const { chaptersRead, newChapters, currentChapterTitle, bookTitle, bookAuthor, previousResult,
+      _provider, _apiKey, _ollamaUrl, _model } = body;
 
-    const useLocal = process.env.USE_LOCAL_MODEL === 'true';
+    // Server env vars take priority; fall back to client-provided settings
+    const serverHasKey = !!process.env.ANTHROPIC_API_KEY;
+    const serverUsesLocal = process.env.USE_LOCAL_MODEL === 'true';
+    const serverConfigured = serverHasKey || serverUsesLocal;
+
+    const useLocal = serverConfigured ? serverUsesLocal : (_provider !== 'anthropic');
+    const callOpts = useLocal
+      ? { baseUrl: process.env.LOCAL_MODEL_URL ?? _ollamaUrl, model: process.env.LOCAL_MODEL_NAME ?? _model }
+      : { apiKey: process.env.ANTHROPIC_API_KEY ?? _apiKey, model: _model };
+
+    if (!useLocal && !callOpts.apiKey) {
+      return NextResponse.json(
+        { error: 'No Anthropic API key configured. Open ⚙ Settings to add your key.' },
+        { status: 400 },
+      );
+    }
+
     const isDelta = !!(previousResult && newChapters?.length);
     const modelName = useLocal
-      ? (process.env.LOCAL_MODEL_NAME ?? 'llama3.1:8b')
-      : 'claude-haiku-4-5-20251001';
+      ? (callOpts.model ?? process.env.LOCAL_MODEL_NAME ?? 'qwen2.5:14b')
+      : (callOpts.model ?? 'claude-haiku-4-5-20251001');
 
     let userPrompt: string;
 
@@ -458,8 +492,8 @@ export async function POST(req: NextRequest) {
 
     async function callAndParse(): Promise<ParseOutcome> {
       const raw = useLocal
-        ? await callLocal(SYSTEM_PROMPT, userPrompt)
-        : await callAnthropic(SYSTEM_PROMPT, userPrompt);
+        ? await callLocal(SYSTEM_PROMPT, userPrompt, callOpts)
+        : await callAnthropic(SYSTEM_PROMPT, userPrompt, callOpts);
 
       let cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
       const firstBrace = cleaned.indexOf('{');

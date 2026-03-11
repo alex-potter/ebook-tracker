@@ -186,9 +186,21 @@ async function analyzeChapter(
     const result = await analyzeChapterClient(bookTitle, bookAuthor, chapter, previousResult);
     return { result, model: 'mobile' };
   }
+
+  // Include client-side AI settings so server can use them when env vars aren't set
+  let aiSettings: Record<string, string> = {};
+  try {
+    const { loadAiSettings } = await import('@/lib/ai-client');
+    const s = loadAiSettings();
+    if (s.provider) aiSettings._provider = s.provider;
+    if (s.anthropicKey) aiSettings._apiKey = s.anthropicKey;
+    if (s.ollamaUrl) aiSettings._ollamaUrl = s.ollamaUrl;
+    if (s.model) aiSettings._model = s.model;
+  } catch { /* ignore — server will use env vars */ }
+
   const body = previousResult
-    ? { newChapters: [chapter], previousResult, currentChapterTitle: chapter.title, bookTitle, bookAuthor }
-    : { chaptersRead: [chapter], currentChapterTitle: chapter.title, bookTitle, bookAuthor };
+    ? { newChapters: [chapter], previousResult, currentChapterTitle: chapter.title, bookTitle, bookAuthor, ...aiSettings }
+    : { chaptersRead: [chapter], currentChapterTitle: chapter.title, bookTitle, bookAuthor, ...aiSettings };
 
   const res = await fetch('/api/analyze', {
     method: 'POST',
@@ -740,15 +752,13 @@ export default function Home() {
               {label}
             </button>
           ))}
-          {IS_MOBILE && (
-            <button
-              onClick={() => setShowSettings(true)}
-              className="flex-shrink-0 ml-auto pb-2 pl-2 text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
-              title="AI Settings"
-            >
-              ⚙ Settings
-            </button>
-          )}
+          <button
+            onClick={() => setShowSettings(true)}
+            className="flex-shrink-0 ml-auto pb-2 pl-2 text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
+            title="AI Settings"
+          >
+            ⚙ Settings
+          </button>
         </div>
         <div className="flex-1 p-4 sm:p-6">
           {uploadTab === 'file' ? (
@@ -944,15 +954,13 @@ export default function Home() {
               Export
             </button>
           )}
-          {IS_MOBILE && (
-            <button
-              onClick={() => setShowSettings(true)}
-              className="text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
-              title="AI Settings"
-            >
-              ⚙
-            </button>
-          )}
+          <button
+            onClick={() => setShowSettings(true)}
+            className="text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
+            title="AI Settings"
+          >
+            ⚙
+          </button>
           <button
             onClick={toggleTheme}
             className="text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"

@@ -108,6 +108,23 @@ async function callAi(settings: AiSettings, userPrompt: string): Promise<string>
 }
 
 // ---------------------------------------------------------------------------
+// Connection test — lightweight ping to verify credentials/URL work
+// ---------------------------------------------------------------------------
+
+export async function testConnection(settings: AiSettings): Promise<string> {
+  const ping = 'Reply with exactly one word: OK';
+  if (settings.provider === 'anthropic') {
+    if (!settings.anthropicKey) throw new Error('No API key entered.');
+    const text = await callAnthropic(settings.anthropicKey, settings.model || 'claude-haiku-4-5-20251001', 'You are a test assistant.', ping);
+    return text.trim();
+  } else {
+    if (!settings.ollamaUrl) throw new Error('No Ollama URL entered.');
+    const text = await callOllama(settings.ollamaUrl, settings.model || 'qwen2.5:14b', 'You are a test assistant.', ping);
+    return text.trim();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main analyze function (mirrors server-side route logic)
 // ---------------------------------------------------------------------------
 
