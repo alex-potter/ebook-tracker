@@ -460,6 +460,29 @@ function subwayPath(x1: number, y1: number, x2: number, y2: number): string {
   }
 }
 
+/**
+ * Same L-path but every point shifted by (ox, oy).
+ * Used to draw parallel transit lines side-by-side when two arc-coloured
+ * lines share the same track segment.
+ */
+function offsetSubwayPath(x1: number, y1: number, x2: number, y2: number, ox: number, oy: number): string {
+  const dx = x2 - x1; const dy = y2 - y1;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    const cx = x1 + Math.sign(dx) * Math.abs(dy);
+    return `M ${x1+ox} ${y1+oy} L ${cx+ox} ${y2+oy} L ${x2+ox} ${y2+oy}`;
+  } else {
+    const cy = y1 + Math.sign(dy) * Math.abs(dx);
+    return `M ${x1+ox} ${y1+oy} L ${x2+ox} ${cy+oy} L ${x2+ox} ${y2+oy}`;
+  }
+}
+
+/** Perpendicular unit vector scaled to distance d, relative to the line from (x1,y1)→(x2,y2). */
+function perpOffset(x1: number, y1: number, x2: number, y2: number, d: number): [number, number] {
+  const dx = x2 - x1; const dy = y2 - y1;
+  const len = Math.sqrt(dx * dx + dy * dy) || 1;
+  return [-dy / len * d, dx / len * d];
+}
+
 /* ── Component ────────────────────────────────────────────────────────── */
 
 interface Props {
@@ -809,23 +832,6 @@ export default function SubwayMap({ snapshots, currentCharacters = [], onCharact
           <feGaussianBlur stdDeviation="2.5" result="blur" />
           <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
         </filter>
-        {/* Per-edge directional gradients */}
-        {graph.edges.map((e, i) => {
-          const s = nodeMap.get(e.source);
-          const t = nodeMap.get(e.target);
-          if (!s || !t) return null;
-          return (
-            <linearGradient
-              key={`grad-${i}`}
-              id={`edge-grad-${i}`}
-              gradientUnits="userSpaceOnUse"
-              x1={s.x} y1={s.y} x2={t.x} y2={t.y}
-            >
-              <stop offset="0%" stopColor={e.sourceColor} />
-              <stop offset="100%" stopColor={e.targetColor} />
-            </linearGradient>
-          );
-        })}
       </defs>
 
       {/* Arc swimlane bands — rendered first so everything else sits on top */}
@@ -907,19 +913,33 @@ export default function SubwayMap({ snapshots, currentCharacters = [], onCharact
         );
       })()}
 
-      {/* Transit lines */}
+      {/* Transit lines — bidirectional edges render as two parallel coloured tracks */}
       <g>
-        {graph.edges.map((e, i) => {
+        {graph.edges.map((e) => {
           const s = nodeMap.get(e.source);
           const t = nodeMap.get(e.target);
           if (!s || !t) return null;
+          const bidir = e.sourceColor !== e.targetColor;
+          const lineW = 1.5 + 1.5 * (e.weight / maxW);
+          if (bidir) {
+            // Two side-by-side tracks, each carrying traffic in one direction
+            const gap = lineW * 0.6 + 0.5;
+            const [ox, oy] = perpOffset(s.x, s.y, t.x, t.y, gap);
+            return (
+              <g key={`${e.source}\x00${e.target}`}>
+                <path d={offsetSubwayPath(s.x, s.y, t.x, t.y,  ox,  oy)} fill="none" stroke={e.sourceColor} strokeWidth={lineW} strokeLinecap="round" strokeLinejoin="round" opacity={0.7} />
+                <path d={offsetSubwayPath(s.x, s.y, t.x, t.y, -ox, -oy)} fill="none" stroke={e.targetColor} strokeWidth={lineW} strokeLinecap="round" strokeLinejoin="round" opacity={0.7} />
+              </g>
+            );
+          }
+          // Single direction — one solid line
           return (
             <path
               key={`${e.source}\x00${e.target}`}
               d={subwayPath(s.x, s.y, t.x, t.y)}
               fill="none"
-              stroke={e.sourceColor === e.targetColor ? e.sourceColor : `url(#edge-grad-${i})`}
-              strokeWidth={2.5 + 2.5 * (e.weight / maxW)}
+              stroke={e.sourceColor}
+              strokeWidth={lineW * 2}
               strokeLinecap="round"
               strokeLinejoin="round"
               opacity={0.65}
