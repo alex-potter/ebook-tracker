@@ -21,6 +21,7 @@ interface Props {
   onToggleBook?: (bookIndex: number) => void;
   excludedChapters?: Set<number>;
   onToggleChapter?: (chapterIndex: number) => void;
+  onDeleteSnapshot?: (chapterIndex: number) => void;
   metaOnly?: boolean;
 }
 
@@ -56,11 +57,12 @@ interface ChapterItemProps {
   onChange: (index: number) => void;
   setLocationInput: (v: string) => void;
   onToggleChapter?: (index: number) => void;
+  onDeleteSnapshot?: (index: number) => void;
 }
 
 function ChapterItem({
   ch, globalIndex, currentIndex, lastAnalyzedIndex, snapshotIndices,
-  isExcluded, rebuilding, rebuildProgress, mode, chapters, onChange, setLocationInput, onToggleChapter,
+  isExcluded, rebuilding, rebuildProgress, mode, chapters, onChange, setLocationInput, onToggleChapter, onDeleteSnapshot,
 }: ChapterItemProps) {
   const isRebuildingThis = rebuilding && rebuildProgress && globalIndex === rebuildProgress.current - 1;
   const hasSnapshot = snapshotIndices?.has(globalIndex) ?? false;
@@ -117,6 +119,15 @@ function ChapterItem({
           {isExcluded ? '↩' : '✕'}
         </button>
       )}
+      {onDeleteSnapshot && hasSnapshot && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onDeleteSnapshot(globalIndex); }}
+          title="Delete this snapshot (and all later ones)"
+          className="flex-shrink-0 ml-0.5 w-4 h-4 flex items-center justify-center rounded text-[9px] opacity-0 group-hover:opacity-100 transition-opacity text-stone-300 dark:text-zinc-700 hover:text-red-500"
+        >
+          🗑
+        </button>
+      )}
     </div>
   );
 }
@@ -124,7 +135,7 @@ function ChapterItem({
 export default function ChapterSelector({
   chapters, currentIndex, onChange, onAnalyze, onCancelAnalyze, onRebuild, onCancelRebuild,
   analyzing, rebuilding, rebuildProgress, lastAnalyzedIndex,
-  snapshotIndices, excludedBooks, onToggleBook, excludedChapters, onToggleChapter, metaOnly,
+  snapshotIndices, excludedBooks, onToggleBook, excludedChapters, onToggleChapter, onDeleteSnapshot, metaOnly,
 }: Props) {
   const [mode, setMode] = useState<'chapter' | 'location'>('chapter');
   const [locationInput, setLocationInput] = useState('');
@@ -180,7 +191,7 @@ export default function ChapterSelector({
     if (next === 'location') setLocationInput(String(chapterIndexToLocation(currentIndex, chapters)));
   }
 
-  const itemProps = { currentIndex, lastAnalyzedIndex, snapshotIndices, rebuilding, rebuildProgress, mode, chapters, onChange, setLocationInput, onToggleChapter };
+  const itemProps = { currentIndex, lastAnalyzedIndex, snapshotIndices, rebuilding, rebuildProgress, mode, chapters, onChange, setLocationInput, onToggleChapter, onDeleteSnapshot };
 
   return (
     <div className="flex flex-col h-full">

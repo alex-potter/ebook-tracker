@@ -542,6 +542,30 @@ export default function Home() {
     }
   }, [book, currentIndex, excludedBooks, excludedChapters]);
 
+  const handleDeleteSnapshot = useCallback((index: number) => {
+    if (!book || !storedRef.current) return;
+    const cur = storedRef.current;
+    // Remove snapshot at index and all later ones (they're based on the deleted analysis)
+    const newSnapshots = cur.snapshots.filter((s) => s.index < index);
+    if (newSnapshots.length === 0) {
+      const updated: StoredBookState = { lastAnalyzedIndex: -2, result: { characters: [], summary: '' }, snapshots: [], bookMeta: cur.bookMeta };
+      storedRef.current = updated;
+      saveStored(book.title, book.author, updated);
+      setResult(null);
+      setViewingSnapshotIndex(null);
+      return;
+    }
+    const sortedSnaps = [...newSnapshots].sort((a, b) => b.index - a.index);
+    const newLastIdx = sortedSnaps[0].index;
+    const newResult = sortedSnaps[0].result;
+    const updated: StoredBookState = { lastAnalyzedIndex: newLastIdx, result: newResult, snapshots: newSnapshots, bookMeta: cur.bookMeta };
+    storedRef.current = updated;
+    saveStored(book.title, book.author, updated);
+    setResult(newResult);
+    setViewingSnapshotIndex(null);
+    if (currentIndex > newLastIdx) setCurrentIndex(newLastIdx);
+  }, [book, currentIndex]);
+
   const characters = result?.characters ?? [];
   const displayed = characters
     .filter((c) => {
@@ -816,6 +840,7 @@ export default function Home() {
             onToggleBook={toggleBook}
             excludedChapters={excludedChapters}
             onToggleChapter={toggleChapter}
+            onDeleteSnapshot={handleDeleteSnapshot}
             metaOnly={isMetaOnly}
           />
           {analyzeError && <p className="mt-3 text-xs text-red-500 text-center">{analyzeError}</p>}
