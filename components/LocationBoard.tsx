@@ -44,13 +44,16 @@ interface Props {
   locations?: LocationInfo[];
   bookTitle?: string;
   snapshots?: Snapshot[];
+  locationImage?: string;
+  locationLabel?: string;
+  onLocationImageChange?: (image: string | null, label: string) => void;
 }
 
-export default function LocationBoard({ characters, locations, bookTitle, snapshots = [] }: Props) {
+export default function LocationBoard({ characters, locations, bookTitle, snapshots = [], locationImage, locationLabel = '', onLocationImageChange }: Props) {
   const [view, setView] = useState<'list' | 'graph'>('list');
   const [search, setSearch] = useState('');
-  const [mapImage, setMapImage] = useState<string | null>(null);
-  const [mapLabel, setMapLabel] = useState('');
+  const mapImage = locationImage ?? null;
+  const mapLabel = locationLabel;
   const [dragging, setDragging] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [showUrlInput, setShowUrlInput] = useState(false);
@@ -78,10 +81,14 @@ export default function LocationBoard({ characters, locations, bookTitle, snapsh
     return b.characters.length - a.characters.length;
   });
 
+  function setImage(image: string | null, label: string) {
+    onLocationImageChange?.(image, label);
+  }
+
   function loadFile(file: File) {
-    setMapLabel(file.name.replace(/\.[^.]+$/, ''));
+    const label = file.name.replace(/\.[^.]+$/, '');
     const reader = new FileReader();
-    reader.onload = (ev) => { setMapImage(ev.target?.result as string); setShowUploadPanel(false); };
+    reader.onload = (ev) => { setImage(ev.target?.result as string, label); setShowUploadPanel(false); };
     reader.readAsDataURL(file);
   }
 
@@ -99,8 +106,7 @@ export default function LocationBoard({ characters, locations, bookTitle, snapsh
     } else {
       const url = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain');
       if (url?.match(/^https?:\/\/.+\.(jpg|jpeg|png|webp|gif)/i)) {
-        setMapImage(url);
-        setMapLabel('Map');
+        setImage(url, 'Map');
         setShowUploadPanel(false);
       }
     }
@@ -112,13 +118,12 @@ export default function LocationBoard({ characters, locations, bookTitle, snapsh
       ?.getAsFile();
     if (imageFile) { loadFile(imageFile); return; }
     const text = e.clipboardData.getData('text');
-    if (text?.startsWith('http')) { setMapImage(text); setMapLabel('Map'); setShowUploadPanel(false); }
+    if (text?.startsWith('http')) { setImage(text, 'Map'); setShowUploadPanel(false); }
   }
 
   function handleUrlSubmit() {
     if (urlInput.trim()) {
-      setMapImage(urlInput.trim());
-      setMapLabel('Map');
+      setImage(urlInput.trim(), 'Map');
       setUrlInput('');
       setShowUrlInput(false);
       setShowUploadPanel(false);
@@ -170,7 +175,7 @@ export default function LocationBoard({ characters, locations, bookTitle, snapsh
                   <p className="text-xs text-center text-stone-400 dark:text-zinc-600 py-2 border-t border-stone-200 dark:border-zinc-800">{mapLabel}</p>
                 )}
                 <button
-                  onClick={() => setMapImage(null)}
+                  onClick={() => setImage(null, '')}
                   className="absolute top-2 right-2 bg-white/80 dark:bg-zinc-900/80 hover:bg-white dark:hover:bg-zinc-900 text-stone-500 dark:text-zinc-400 hover:text-red-400 rounded-lg w-7 h-7 flex items-center justify-center text-sm transition-colors border border-stone-300 dark:border-zinc-700"
                   title="Remove map"
                 >

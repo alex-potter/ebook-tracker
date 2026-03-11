@@ -1114,7 +1114,23 @@ export default function Home() {
                   )}
 
                   {tab === 'locations' && (
-                    <LocationBoard characters={characters} locations={result.locations} bookTitle={book.title} snapshots={stored?.snapshots ?? []} />
+                    <LocationBoard
+                      characters={characters}
+                      locations={result.locations}
+                      bookTitle={book.title}
+                      snapshots={stored?.snapshots ?? []}
+                      locationImage={mapState?.locationImage}
+                      locationLabel={mapState?.locationLabel}
+                      onLocationImageChange={(image, label) => {
+                        const next: MapState = {
+                          imageDataUrl: mapState?.imageDataUrl ?? '',
+                          pins: mapState?.pins ?? {},
+                          ...(image ? { locationImage: image, locationLabel: label } : {}),
+                        };
+                        setMapState(next);
+                        saveMapState(book.title, book.author, next);
+                      }}
+                    />
                   )}
                 </div>
               )}

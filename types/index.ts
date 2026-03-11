@@ -69,4 +69,6 @@ export interface LocationPin {
 export interface MapState {
   imageDataUrl: string;
   pins: Record<string, LocationPin>;  // location name → coordinates
+  locationImage?: string;             // Locations-tab display-only map image
+  locationLabel?: string;
 }
