@@ -141,9 +141,9 @@ function bestSnapshot(snapshots: Snapshot[], targetIndex: number): Snapshot | nu
 }
 
 /** Add/replace a snapshot for this index */
-function upsertSnapshot(snapshots: Snapshot[], index: number, result: AnalysisResult, model?: string): Snapshot[] {
+function upsertSnapshot(snapshots: Snapshot[], index: number, result: AnalysisResult, model?: string, appVersion?: string): Snapshot[] {
   const without = snapshots.filter((s) => s.index !== index);
-  return [...without, { index, result, ...(model ? { model } : {}) }];
+  return [...without, { index, result, ...(model ? { model } : {}), ...(appVersion ? { appVersion } : {}) }];
 }
 
 function listSavedBooks(excludeTitle?: string, excludeAuthor?: string): SavedBookEntry[] {
@@ -164,6 +164,7 @@ function listSavedBooks(excludeTitle?: string, excludeAuthor?: string): SavedBoo
 }
 
 const IS_MOBILE = process.env.NEXT_PUBLIC_MOBILE === 'true';
+const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? 'dev';
 
 const FRONT_MATTER_RE = /^\s*(acknowledgements?|acknowledgments?|foreword|fore\s*word|preface|dedication|about\s+the\s+author|author'?s?\s+note|note\s+(from|by)\s+the\s+author|copyright|contents|table\s+of\s+contents|cast\s+of\s+characters|dramatis\s+personae|maps?|part\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|i{1,3}|iv|vi{0,3}|ix))\s*$/i;
 
@@ -484,7 +485,7 @@ export default function Home() {
         }
         const { result: chapterResult, model: chapterModel } = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated);
         accumulated = chapterResult;
-        snapshots = upsertSnapshot(snapshots, i, accumulated, chapterModel);
+        snapshots = upsertSnapshot(snapshots, i, accumulated, chapterModel, APP_VERSION);
         const partial: StoredBookState = { lastAnalyzedIndex: i, result: accumulated, snapshots };
         storedRef.current = partial;
         saveStored(book.title, book.author, partial);
@@ -528,7 +529,7 @@ export default function Home() {
         const chapter = { title: ch.title, text: ch.text };
         const { result: rebuildResult, model: rebuildModel } = await analyzeChapter(book.title, book.author, chapter, accumulated);
         accumulated = rebuildResult;
-        snapshots = upsertSnapshot(snapshots, i, accumulated, rebuildModel);
+        snapshots = upsertSnapshot(snapshots, i, accumulated, rebuildModel, APP_VERSION);
         const partial: StoredBookState = { lastAnalyzedIndex: i, result: accumulated, snapshots };
         storedRef.current = partial;
         saveStored(book.title, book.author, partial);

@@ -58,6 +58,7 @@ export interface Snapshot {
   index: number;         // chapter index (0-based)
   result: AnalysisResult;
   model?: string;        // model used to analyze this chapter (e.g. "qwen2.5:14b", "claude-haiku-4-5")
+  appVersion?: string;   // BookBuddy version that processed this chapter (e.g. "0.1.0")
 }
 
 export interface LocationPin {
