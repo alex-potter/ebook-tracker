@@ -448,7 +448,7 @@ export default function LocationGraph({ snapshots, currentCharacters = [] }: Pro
 
                 {/* Character avatars — flat list keyed by name so CSS transition fires on move */}
                 {Array.from(charPos.entries()).map(([name, { x, y, status }]) => {
-                  const hex = STATUS_HEX[status];
+                  const hex = STATUS_HEX[status] ?? STATUS_HEX.unknown;
                   return (
                     <g
                       key={name}

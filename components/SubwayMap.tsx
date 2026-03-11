@@ -988,7 +988,7 @@ export default function SubwayMap({ snapshots, currentCharacters = [], onCharact
 
       {/* Character avatars — positions driven by JS path animation, not CSS transition */}
       {Array.from(displayPos.entries()).map(([name, { x, y, status }]) => {
-        const hex = STATUS_HEX[status];
+        const hex = STATUS_HEX[status] ?? STATUS_HEX.unknown;
         return (
           <g
             key={name}
