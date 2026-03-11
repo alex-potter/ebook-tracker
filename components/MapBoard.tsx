@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import type { Character, LocationPin, MapState, Snapshot } from '@/types';
+import type { Character, LocationPin, MapState, NarrativeArc, Snapshot } from '@/types';
 import SubwayMap from './SubwayMap';
 import CharacterModal from './CharacterModal';
 import LocationModal from './LocationModal';
@@ -9,11 +9,18 @@ import { withResolvedLocations } from '@/lib/resolve-locations';
 
 interface Props {
   characters: Character[];
+  arcs?: NarrativeArc[];
   bookTitle?: string;
   mapState: MapState | null;
   onMapStateChange: (state: MapState) => void;
   snapshots?: Snapshot[];
 }
+
+const ARC_STATUS_DOT: Record<NarrativeArc['status'], string> = {
+  active:   'bg-amber-500',
+  dormant:  'bg-stone-400 dark:bg-zinc-600',
+  resolved: 'bg-emerald-500',
+};
 
 /** Resize a dataURL to fit within maxDim×maxDim, preserving aspect ratio. */
 function resizeDataUrl(dataUrl: string, maxDim = 1024): Promise<{ dataUrl: string; width: number; height: number }> {
@@ -143,7 +150,7 @@ function charImportanceColor(importance: Character['importance']): string {
   return importance === 'main' ? '#f59e0b' : importance === 'secondary' ? '#3b82f6' : '#71717a';
 }
 
-export default function MapBoard({ characters, bookTitle, mapState, onMapStateChange, snapshots = [] }: Props) {
+export default function MapBoard({ characters, arcs = [], bookTitle, mapState, onMapStateChange, snapshots = [] }: Props) {
   const [placingLocation, setPlacingLocation] = useState<string | null>(null);
   const [activePin, setActivePin] = useState<string | null>(null);
   const [activeCharPin, setActiveCharPin] = useState<string | null>(null);
@@ -154,6 +161,7 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
   const [urlLoading, setUrlLoading] = useState(false);
   const [urlError, setUrlError] = useState<string | null>(null);
   const [trackedCharNames, setTrackedCharNames] = useState<Set<string> | null>(null); // null = all
+  const [selectedArc, setSelectedArc] = useState<string | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [charFilterQ, setCharFilterQ] = useState('');
   const [selectedCharName, setSelectedCharName] = useState<string | null>(null);
@@ -189,6 +197,48 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
       if (base.has(name)) { base.delete(name); } else { base.add(name); }
       return base.size === characters.length ? null : base;
     });
+    setSelectedArc(null);
+  }
+
+  function toggleArc(arc: NarrativeArc) {
+    if (selectedArc === arc.name) {
+      setSelectedArc(null);
+      setTrackedCharNames(null);
+    } else {
+      setSelectedArc(arc.name);
+      setTrackedCharNames(new Set(arc.characters));
+    }
+  }
+
+  // Arc pills JSX — shared between both filter panels
+  const sortedArcs = [...arcs].sort((a, b) => {
+    const o = { active: 0, dormant: 1, resolved: 2 };
+    return o[a.status] - o[b.status];
+  });
+
+  function ArcPills() {
+    if (sortedArcs.length === 0) return null;
+    return (
+      <div className="flex-shrink-0 space-y-1.5">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-stone-400 dark:text-zinc-600">By Arc</p>
+        <div className="flex flex-wrap gap-1">
+          {sortedArcs.map((arc) => (
+            <button
+              key={arc.name}
+              onClick={() => toggleArc(arc)}
+              className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+                selectedArc === arc.name
+                  ? 'bg-amber-500/15 border-amber-500/50 text-amber-400'
+                  : 'border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:text-stone-800 dark:hover:text-zinc-200 hover:border-stone-400 dark:hover:border-zinc-600'
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${ARC_STATUS_DOT[arc.status]}`} />
+              {arc.name}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   const sortedCharacters = [...characters].sort((a, b) => {
@@ -397,6 +447,7 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
                   <p className="text-xs font-semibold text-stone-700 dark:text-zinc-300">Track characters</p>
                   <button onClick={() => setFilterOpen(false)} className="text-stone-400 dark:text-zinc-600 hover:text-stone-500 dark:hover:text-zinc-400 text-xs">✕</button>
                 </div>
+                <ArcPills />
                 <input
                   type="search"
                   placeholder="Search…"
@@ -406,11 +457,11 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
                 />
                 <div className="flex gap-1.5 flex-shrink-0">
                   <button
-                    onClick={() => setTrackedCharNames(null)}
+                    onClick={() => { setTrackedCharNames(null); setSelectedArc(null); }}
                     className="text-[10px] px-2 py-0.5 rounded border border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:text-stone-800 dark:hover:text-zinc-200 hover:border-stone-400 dark:hover:border-zinc-600 transition-colors"
                   >All</button>
                   <button
-                    onClick={() => setTrackedCharNames(new Set())}
+                    onClick={() => { setTrackedCharNames(new Set()); setSelectedArc(null); }}
                     className="text-[10px] px-2 py-0.5 rounded border border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:text-stone-800 dark:hover:text-zinc-200 hover:border-stone-400 dark:hover:border-zinc-600 transition-colors"
                   >None</button>
                 </div>
@@ -569,11 +620,12 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
                     ⊙ {trackedCharNames !== null ? `${trackedCharNames.size}/${characters.length}` : 'Filter'}
                   </button>
                   {filterOpen && (
-                    <div className="absolute top-full mt-1 left-0 bg-white/95 dark:bg-zinc-900/95 border border-stone-300 dark:border-zinc-700 rounded-xl shadow-2xl backdrop-blur-sm p-3 flex flex-col gap-2 w-52 max-h-80 z-30">
+                    <div className="absolute top-full mt-1 left-0 bg-white/95 dark:bg-zinc-900/95 border border-stone-300 dark:border-zinc-700 rounded-xl shadow-2xl backdrop-blur-sm p-3 flex flex-col gap-2 w-56 max-h-80 z-30">
                       <div className="flex items-center justify-between flex-shrink-0">
                         <p className="text-xs font-semibold text-stone-700 dark:text-zinc-300">Track characters</p>
                         <button onClick={() => setFilterOpen(false)} className="text-stone-400 dark:text-zinc-600 hover:text-stone-500 dark:hover:text-zinc-400 text-xs">✕</button>
                       </div>
+                      <ArcPills />
                       <input
                         type="search"
                         placeholder="Search…"
@@ -583,11 +635,11 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
                       />
                       <div className="flex gap-1.5 flex-shrink-0">
                         <button
-                          onClick={() => setTrackedCharNames(null)}
+                          onClick={() => { setTrackedCharNames(null); setSelectedArc(null); }}
                           className="text-[10px] px-2 py-0.5 rounded border border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:text-stone-800 dark:hover:text-zinc-200 hover:border-stone-400 dark:hover:border-zinc-600 transition-colors"
                         >All</button>
                         <button
-                          onClick={() => setTrackedCharNames(new Set())}
+                          onClick={() => { setTrackedCharNames(new Set()); setSelectedArc(null); }}
                           className="text-[10px] px-2 py-0.5 rounded border border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:text-stone-800 dark:hover:text-zinc-200 hover:border-stone-400 dark:hover:border-zinc-600 transition-colors"
                         >None</button>
                       </div>

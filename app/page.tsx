@@ -1191,6 +1191,7 @@ export default function Home() {
             <div className="flex-1 min-h-0">
               <MapBoard
                 characters={characters}
+                arcs={result?.arcs}
                 bookTitle={book.title}
                 mapState={mapState}
                 snapshots={stored?.snapshots ?? []}
