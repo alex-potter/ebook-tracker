@@ -155,13 +155,16 @@ const DELTA_SCHEMA = `{
   ],
   "updatedArcs": [
     {
-      "name": "Arc name (must exactly match an existing arc name, or be new)",
+      "name": "Arc name — must exactly match an existing arc name (or renamedArcs new name), or be genuinely new",
       "status": "active" | "resolved" | "dormant",
       "characters": ["character names involved"],
       "summary": "1–2 sentences on where this arc stands after this chapter"
     }
   ],
-  "retiredArcs": ["exact name of any arc being merged into another or permanently dropped"],
+  "renamedArcs": [
+    { "from": "exact existing arc name", "to": "new arc name reflecting its evolved scope or phase" }
+  ],
+  "retiredArcs": ["exact name of any arc being permanently dropped — NOT ones being renamed"],
   "summary": "2–3 sentence summary of where the story stands as of the current chapter"
 }`;
 
@@ -200,7 +203,7 @@ INSTRUCTIONS — RETURN ONLY CHANGES, NOT THE FULL LIST:
 3. For any BRAND NEW named character introduced in this chapter: include them in "updatedCharacters" with all fields filled in. NEVER group individuals — each person gets their own entry.
 4. Do NOT include characters from the existing list who do not appear in the new chapter.
 5. For significant named places in this chapter: include them in "updatedLocations". CONSOLIDATION RULES — prefer fewer, broader locations: (a) if the place is inside or part of an existing location (e.g. a room in a castle, a district of a city), use the existing location name instead; (b) if the place is immediately adjacent to or commonly grouped with an existing location, use the existing location name; (c) only add a genuinely new entry if the place is distinct and would appear as a separate node on a map.
-6. For narrative arcs: include in "updatedArcs" only arcs that progressed, changed status, or are new this chapter. If two arcs have merged into one storyline, add the surviving arc to "updatedArcs" and add the absorbed arc's name to "retiredArcs". If the total arc count would exceed 6, you MUST retire at least one — prefer merging related arcs over keeping them separate. Use "retiredArcs" to list any arc names being dropped.
+6. For narrative arcs: include in "updatedArcs" only arcs that progressed, changed status, or are new this chapter. ARC CONTINUITY RULES — prefer continuity over creating new arcs: (a) if an arc cleanly transitions into a new phase with the same characters and storyline (e.g. "The Escape" becomes "The Pursuit"), use "renamedArcs" to rename it rather than retiring and creating a new one; (b) if two arcs converge into one thread, rename the broader arc and retire the narrower one; (c) only use "retiredArcs" for arcs that are truly finished with no continuation. If the total arc count would exceed 6, you MUST rename/merge at least one — prefer combining related arcs over keeping them separate.
 7. Update the summary to reflect the story as of the current chapter.
 8. Do NOT use any knowledge of this book beyond what is listed above and the new chapter text.
 
@@ -344,7 +347,7 @@ const MAX_ARCS = 8; // hard cap — prune oldest dormant/resolved if exceeded
 // Merge a delta result into the previous full result
 function mergeDelta(
   previous: AnalysisResult,
-  delta: { updatedCharacters?: AnalysisResult['characters']; updatedLocations?: AnalysisResult['locations']; updatedArcs?: AnalysisResult['arcs']; retiredArcs?: string[]; summary?: string },
+  delta: { updatedCharacters?: AnalysisResult['characters']; updatedLocations?: AnalysisResult['locations']; updatedArcs?: AnalysisResult['arcs']; renamedArcs?: { from: string; to: string }[]; retiredArcs?: string[]; summary?: string },
 ): AnalysisResult {
   const merged = previous.characters.map((c) => ({ ...c }));
   const norm = (s: string) => s.toLowerCase().trim();
@@ -379,8 +382,14 @@ function mergeDelta(
     }
   }
 
+  // Apply renames first so updatedArcs can reference the new names
   const retired = new Set((delta.retiredArcs ?? []).map((n) => n.toLowerCase()));
-  const prevArcs = (previous.arcs ?? []).filter((a) => !retired.has(a.name.toLowerCase()));
+  let prevArcs = (previous.arcs ?? []).filter((a) => !retired.has(a.name.toLowerCase()));
+  for (const { from, to } of delta.renamedArcs ?? []) {
+    const idx = prevArcs.findIndex((a) => a.name.toLowerCase() === from.toLowerCase());
+    if (idx >= 0) prevArcs = prevArcs.map((a, i) => i === idx ? { ...a, name: to } : a);
+    else console.warn(`[analyze] renamedArcs: arc "${from}" not found`);
+  }
   const mergedArcs = [...prevArcs];
   for (const updated of delta.updatedArcs ?? []) {
     if (!updated.name || retired.has(updated.name.toLowerCase())) continue;
@@ -653,7 +662,7 @@ export async function POST(req: NextRequest) {
     let result: AnalysisResult;
     if (isDelta) {
       // Delta response: merge updated/new characters into previous full state
-      const delta = parsed as { updatedCharacters?: AnalysisResult['characters']; updatedLocations?: AnalysisResult['locations']; updatedArcs?: AnalysisResult['arcs']; retiredArcs?: string[]; summary?: string };
+      const delta = parsed as { updatedCharacters?: AnalysisResult['characters']; updatedLocations?: AnalysisResult['locations']; updatedArcs?: AnalysisResult['arcs']; renamedArcs?: { from: string; to: string }[]; retiredArcs?: string[]; summary?: string };
       result = mergeDelta(previousResult!, delta);
       console.log(`[analyze] Delta merge: ${delta.updatedCharacters?.length ?? 0} char changes, ${delta.updatedArcs?.length ?? 0} arc changes → ${result.characters.length} chars, ${result.arcs?.length ?? 0} arcs`);
     } else {
