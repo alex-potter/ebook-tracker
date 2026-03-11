@@ -139,7 +139,7 @@ function findNearestNode(x: number, y: number, nodes: Node[]): Node {
 
 // Returns true only for real, concrete place names.
 // Filters out placeholder values the LLM emits when a location is uncertain.
-const FAKE_LOC_RE = /^(unknown|not specified|unspecified|unclear|n\/a|none|various|travelling|traveling|en route|in transit)/i;
+const FAKE_LOC_RE = /^(unknown|not specified|unspecified|unclear|n\/a|none|various|en route|in transit|travelling|traveling|returning|heading|journeying|fleeing|marching|riding|sailing|making (his|her|their|its|the) way)/i;
 function isRealLocation(loc: string | undefined): loc is string {
   if (!loc) return false;
   const t = loc.trim();
@@ -726,6 +726,25 @@ export default function SubwayMap({ snapshots, currentCharacters = [], onCharact
     return { n, primaryColor, r, lines, labelX, labelY, labelAnchor, labelBaseline };
   });
 
+  // Penalty box — characters with no real map location (in transit, status phrases, etc.)
+  const PB_W = 170, PB_H = 75;
+  const PB_X = W - PB_W - 10, PB_Y = H - PB_H - 10;
+  const pbCX = PB_X + PB_W / 2;
+  const pbCY = PB_Y + 18 + (PB_H - 22) / 2; // vertically centred below the label
+
+  const penaltyChars = resolvedCharacters
+    .filter((c) => !charPositions.has(c.name))
+    .map((c) => ({ name: c.name, status: c.status }));
+  const pbShow = penaltyChars.slice(0, MAX_SHOW);
+  const pbExtra = penaltyChars.length - MAX_SHOW;
+  const pbShowCount = pbShow.length + (pbExtra > 0 ? 1 : 0);
+  if (penaltyChars.length > 0) {
+    const pbPositions = clusterPositions(pbShowCount, pbCX, pbCY);
+    pbShow.forEach((c, i) => {
+      if (pbPositions[i]) charPositions.set(c.name, { x: pbPositions[i].x, y: pbPositions[i].y, status: c.status, nx: pbCX, ny: pbCY });
+    });
+  }
+
   // Expose computed target positions to the animation effect
   targetPosRef.current = charPositions;
 
@@ -915,6 +934,33 @@ export default function SubwayMap({ snapshots, currentCharacters = [], onCharact
           <text textAnchor="middle" dominantBaseline="central" fontSize="5" fill={overflowText}>+{count}</text>
         </g>
       ))}
+
+      {/* Penalty box — characters in transit or at status-only locations */}
+      {penaltyChars.length > 0 && (() => {
+        const pbPositions = clusterPositions(pbShowCount, pbCX, pbCY);
+        return (
+          <g>
+            <rect x={PB_X} y={PB_Y} width={PB_W} height={PB_H} rx={6}
+              fill={isDark ? 'rgba(24,24,27,0.92)' : 'rgba(250,250,249,0.92)'}
+              stroke={isDark ? 'rgba(82,82,91,0.65)' : 'rgba(168,162,158,0.65)'}
+              strokeWidth={1} strokeDasharray="4 3"
+            />
+            <text x={PB_X + PB_W / 2} y={PB_Y + 10}
+              textAnchor="middle" dominantBaseline="central"
+              fontSize={7} fontWeight="700" letterSpacing="0.07em"
+              fill={isDark ? '#71717a' : '#a8a29e'}
+              style={{ textTransform: 'uppercase', userSelect: 'none' }}>
+              In Transit
+            </text>
+            {pbExtra > 0 && pbPositions[MAX_SHOW] && (
+              <g transform={`translate(${pbPositions[MAX_SHOW].x},${pbPositions[MAX_SHOW].y})`}>
+                <circle r={AVT_R} fill={overflowFill} stroke={overflowStroke} strokeWidth="1" />
+                <text textAnchor="middle" dominantBaseline="central" fontSize="5" fill={overflowText}>+{pbExtra}</text>
+              </g>
+            )}
+          </g>
+        );
+      })()}
 
       {/* Character avatars — positions driven by JS path animation, not CSS transition */}
       {Array.from(displayPos.entries()).map(([name, { x, y, status }]) => {
