@@ -423,9 +423,10 @@ interface Props {
   snapshots: Snapshot[];
   currentCharacters?: Character[];  // characters at the currently viewed snapshot
   onCharacterClick?: (name: string) => void;
+  onLocationClick?: (name: string) => void;
 }
 
-export default function SubwayMap({ snapshots, currentCharacters = [], onCharacterClick }: Props) {
+export default function SubwayMap({ snapshots, currentCharacters = [], onCharacterClick, onLocationClick }: Props) {
   const [isDark, setIsDark] = useState(() =>
     typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
   );
@@ -800,7 +801,13 @@ export default function SubwayMap({ snapshots, currentCharacters = [], onCharact
 
       {/* Station circles — rendered before labels so labels always appear on top */}
       {nodeData.map(({ n, primaryColor, r }) => (
-        <g key={n.id} filter="url(#sm-glow)">
+        <g
+          key={n.id}
+          filter="url(#sm-glow)"
+          style={{ cursor: onLocationClick ? 'pointer' : 'default' }}
+          onClick={() => onLocationClick?.(n.id)}
+        >
+          <circle cx={n.x} cy={n.y} r={r + 6} fill="transparent" />
           <circle cx={n.x} cy={n.y} r={r + 3} fill={primaryColor} opacity={0.2} />
           <circle cx={n.x} cy={n.y} r={r} fill={nodeFill} stroke={primaryColor} strokeWidth={2.5} />
         </g>

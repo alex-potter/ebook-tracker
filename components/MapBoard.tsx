@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Character, LocationPin, MapState, Snapshot } from '@/types';
 import SubwayMap from './SubwayMap';
 import CharacterModal from './CharacterModal';
+import LocationModal from './LocationModal';
 import { withResolvedLocations } from '@/lib/resolve-locations';
 
 interface Props {
@@ -155,6 +156,7 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
   const [trackedCharNames, setTrackedCharNames] = useState<Set<string> | null>(null); // null = all
   const [filterOpen, setFilterOpen] = useState(false);
   const [selectedCharName, setSelectedCharName] = useState<string | null>(null);
+  const [selectedLocationName, setSelectedLocationName] = useState<string | null>(null);
 
   // Auto-detect state
   const [detecting, setDetecting] = useState(false);
@@ -371,6 +373,9 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
       {selectedChar && (
         <CharacterModal character={selectedChar} snapshots={snapshots} onClose={() => setSelectedCharName(null)} />
       )}
+      {selectedLocationName && (
+        <LocationModal locationName={selectedLocationName} snapshots={snapshots} onClose={() => setSelectedLocationName(null)} />
+      )}
       <div
         className={`relative h-full min-h-0 rounded-xl border overflow-hidden ${isDragging ? 'border-amber-500/40' : 'border-stone-200 dark:border-zinc-800'}`}
         onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
@@ -379,7 +384,7 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
       >
         {/* Subway map fills full height */}
         <div className="h-full bg-white dark:bg-zinc-900">
-          <SubwayMap snapshots={snapshots} currentCharacters={displayedChars} onCharacterClick={setSelectedCharName} />
+          <SubwayMap snapshots={snapshots} currentCharacters={displayedChars} onCharacterClick={setSelectedCharName} onLocationClick={setSelectedLocationName} />
         </div>
 
         {/* Filter panel — bottom-left overlay */}
@@ -513,6 +518,11 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
   const unplacedLocations = locations.filter(([name]) => !pins[name] && !suggestions?.[name]);
 
   return (
+    <>
+    {selectedLocationName && (
+      <LocationModal locationName={selectedLocationName} snapshots={snapshots} onClose={() => setSelectedLocationName(null)} />
+    )}
+    {selectedCharName && (() => { const c = characters.find((ch) => ch.name === selectedCharName); return c ? <CharacterModal character={c} snapshots={snapshots} onClose={() => setSelectedCharName(null)} /> : null; })()}
     <div className="flex gap-4 h-full min-h-0">
       {/* Map area */}
       <div className="flex-1 min-w-0 flex flex-col gap-2 min-h-0">
@@ -798,7 +808,10 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
                       onClick={(e) => e.stopPropagation()}
                     >
                       <div className="flex items-center justify-between mb-2">
-                        <p className="text-[10px] font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider">{location}</p>
+                        <button
+                          onClick={() => { setSelectedLocationName(location); setActivePin(null); }}
+                          className="text-[10px] font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider hover:text-stone-700 dark:hover:text-zinc-300 transition-colors text-left"
+                        >{location}</button>
                         <button
                           onClick={() => { removePin(location); setActivePin(null); }}
                           className="text-[10px] text-stone-300 dark:text-zinc-700 hover:text-red-500 transition-colors ml-2"
@@ -961,5 +974,6 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
         )}
       </div>
     </div>
+    </>
   );
 }
