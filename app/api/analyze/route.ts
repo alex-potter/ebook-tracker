@@ -57,7 +57,7 @@ const SCHEMA = `{
   "locations": [
     {
       "name": "Proper place name only — a city, station, planet, region, or named landmark (NOT a generic room, corridor, or activity description)",
-      "arc": "Short narrative arc label grouping related locations into the same storyline thread (e.g. 'Shire', 'Quest', 'Gondor', 'Rohan'). Use the same label consistently across chapters for the same storyline. If a location belongs to multiple arcs choose the most prominent one.",
+      "arc": "Short narrative arc label (2–4 words max) grouping related locations into the same broad storyline thread. Aim for 3–5 arc labels total for the whole book — broad strokes like 'The Journey', 'The War', 'The Shire', not a new label per chapter. If a location fits an existing arc, use that exact label.",
       "description": "1–2 sentence description of this place — what kind of place it is, its significance, atmosphere, or notable features as established in the text",
       "recentEvents": "1–2 sentences describing what happened at this location in the current chapter — key events, arrivals, departures, or confrontations. Omit if nothing notable occurred here."
     }
@@ -89,6 +89,13 @@ function compactCharacterList(chars: AnalysisResult['characters']): string {
     .join('\n');
 }
 
+// Collect distinct arc labels already in use
+function existingArcLabels(locs: AnalysisResult['locations']): string[] {
+  const seen = new Set<string>();
+  for (const l of locs ?? []) if (l.arc?.trim()) seen.add(l.arc.trim());
+  return [...seen];
+}
+
 // Delta schema — only new/changed characters and locations
 const DELTA_SCHEMA = `{
   "updatedCharacters": [
@@ -109,7 +116,7 @@ const DELTA_SCHEMA = `{
   "updatedLocations": [
     {
       "name": "Proper place name only — a city, station, planet, region, or named landmark (NOT a generic room, corridor, or activity description)",
-      "arc": "Short narrative arc label grouping related locations into the same storyline thread. Use the same label consistently for the same storyline across all chapters.",
+      "arc": "Use one of the EXISTING ARC LABELS listed above whenever it fits. Only create a new label if no existing one applies — and keep the total number of distinct arcs to 5 or fewer for the whole book.",
       "description": "1–2 sentence description of this place as revealed so far",
       "recentEvents": "1–2 sentences describing what happened at this location in this chapter — key events, arrivals, departures, or confrontations. Omit if nothing notable occurred here."
     }
@@ -125,10 +132,14 @@ function buildUpdatePrompt(
   newChaptersText: string,
 ): string {
   const prevCount = previousResult.characters.length;
+  const arcs = existingArcLabels(previousResult.locations);
+  const arcLine = arcs.length > 0
+    ? `\nEXISTING ARC LABELS (reuse these exactly — do not invent new ones unless none fit): ${arcs.join(', ')}`
+    : '';
   return `I am reading "${bookTitle}" by ${bookAuthor}. I have just finished the chapter titled "${currentChapterTitle}".
 
 EXISTING CHARACTERS (${prevCount} already tracked — DO NOT reproduce this list in your output):
-${compactCharacterList(previousResult.characters)}
+${compactCharacterList(previousResult.characters)}${arcLine}
 
 NEW CHAPTER TEXT TO PROCESS:
 ${newChaptersText}
