@@ -898,7 +898,8 @@ export default function SubwayMap({ snapshots, currentCharacters = [], onCharact
             x={labelX} y={startY}
             textAnchor={labelAnchor} dominantBaseline="hanging"
             fontSize={LABEL_FONT} fontWeight="600" fill={labelFill}
-            style={{ textShadow: labelShadow }}
+            style={{ textShadow: labelShadow, cursor: onLocationClick ? 'pointer' : 'default' }}
+            onClick={() => onLocationClick?.(n.id)}
           >
             {lines.map((line, i) => (
               <tspan key={i} x={labelX} dy={i === 0 ? 0 : LINE_HEIGHT}>{line}</tspan>
