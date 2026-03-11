@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Character, LocationPin, MapState, Snapshot } from '@/types';
 import SubwayMap from './SubwayMap';
+import CharacterModal from './CharacterModal';
 import { withResolvedLocations } from '@/lib/resolve-locations';
 
 interface Props {
@@ -153,6 +154,7 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
   const [urlError, setUrlError] = useState<string | null>(null);
   const [trackedCharNames, setTrackedCharNames] = useState<Set<string> | null>(null); // null = all
   const [filterOpen, setFilterOpen] = useState(false);
+  const [selectedCharName, setSelectedCharName] = useState<string | null>(null);
 
   // Auto-detect state
   const [detecting, setDetecting] = useState(false);
@@ -363,7 +365,12 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
     const searchQuery = encodeURIComponent(`${bookTitle ?? ''} map`.trim());
     const searchUrl = `https://www.google.com/search?tbm=isch&q=${searchQuery}`;
 
+    const selectedChar = selectedCharName ? characters.find((c) => c.name === selectedCharName) : undefined;
     return (
+      <>
+      {selectedChar && (
+        <CharacterModal character={selectedChar} snapshots={snapshots} onClose={() => setSelectedCharName(null)} />
+      )}
       <div
         className={`relative h-full min-h-0 rounded-xl border overflow-hidden ${isDragging ? 'border-amber-500/40' : 'border-stone-200 dark:border-zinc-800'}`}
         onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
@@ -372,7 +379,7 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
       >
         {/* Subway map fills full height */}
         <div className="h-full bg-white dark:bg-zinc-900">
-          <SubwayMap snapshots={snapshots} currentCharacters={displayedChars} />
+          <SubwayMap snapshots={snapshots} currentCharacters={displayedChars} onCharacterClick={setSelectedCharName} />
         </div>
 
         {/* Filter panel — bottom-left overlay */}
@@ -496,6 +503,7 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
         <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageFile(f); }} />
       </div>
+      </>
     );
   }
 

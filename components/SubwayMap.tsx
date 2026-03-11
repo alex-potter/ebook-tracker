@@ -422,9 +422,10 @@ function subwayPath(x1: number, y1: number, x2: number, y2: number): string {
 interface Props {
   snapshots: Snapshot[];
   currentCharacters?: Character[];  // characters at the currently viewed snapshot
+  onCharacterClick?: (name: string) => void;
 }
 
-export default function SubwayMap({ snapshots, currentCharacters = [] }: Props) {
+export default function SubwayMap({ snapshots, currentCharacters = [], onCharacterClick }: Props) {
   const [isDark, setIsDark] = useState(() =>
     typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
   );
@@ -837,11 +838,12 @@ export default function SubwayMap({ snapshots, currentCharacters = [] }: Props) 
         return (
           <g
             key={name}
-            style={{ transform: `translate(${x}px, ${y}px)` }}
+            style={{ transform: `translate(${x}px, ${y}px)`, cursor: onCharacterClick ? 'pointer' : 'default' }}
+            onClick={() => onCharacterClick?.(name)}
           >
             <title>{name} ({status})</title>
             <circle r={AVT_R} fill={hex + '28'} stroke={hex} strokeWidth="1.5" />
-            <text textAnchor="middle" dominantBaseline="central" fontSize="5.5" fontWeight="700" fill={hex}>
+            <text textAnchor="middle" dominantBaseline="central" fontSize="5.5" fontWeight="700" fill={hex} style={{ pointerEvents: 'none' }}>
               {initials(name)}
             </text>
           </g>
