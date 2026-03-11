@@ -910,7 +910,7 @@ export default function Home() {
           </div>
 
           {/* Snapshot navigator — shown on all tabs when snapshots exist */}
-          {!busy && (stored?.snapshots?.length ?? 0) > 0 && (() => {
+          {(stored?.snapshots?.length ?? 0) > 0 && (() => {
             const snaps = [...(stored!.snapshots)].sort((a, b) => a.index - b.index);
             const pos = viewingSnapshotIndex === null
               ? snaps.length - 1  // latest
@@ -1003,7 +1003,7 @@ export default function Home() {
           {tab !== 'map' && (
             <>
 
-              {!result && !busy && (
+              {!result && !busy && !rebuildProgress && (
                 <div className="flex flex-col items-center justify-center flex-1 text-center gap-3">
                   <span className="text-5xl opacity-20">{isSeriesContinuation ? '📚' : '⌖'}</span>
                   <p className="text-stone-500 dark:text-zinc-400 font-medium">
@@ -1020,24 +1020,34 @@ export default function Home() {
               )}
 
               {(analyzing || rebuilding) && rebuildProgress && (
-                <div className="flex flex-col items-center justify-center flex-1 gap-5">
-                  <div className={`w-10 h-10 border-2 border-t-transparent rounded-full animate-spin ${rebuilding ? 'border-violet-500' : 'border-amber-500'}`} />
-                  <div className="text-center">
-                    <p className="text-stone-800 dark:text-zinc-200 font-semibold">{rebuilding ? 'Rebuilding…' : 'Analyzing…'}</p>
-                    <p className="text-sm text-stone-400 dark:text-zinc-500 mt-1">
-                      Chapter {rebuildProgress.current} / {rebuildProgress.total}
-                      {rebuildProgress.current > 0 && (
-                        <>{' · '}<span className="text-stone-500 dark:text-zinc-400">{book.chapters[rebuildProgress.current - 1]?.title}</span></>
-                      )}
-                    </p>
+                <div className={`mb-4 rounded-xl border px-4 py-3 ${rebuilding ? 'border-violet-500/20 bg-violet-500/5' : 'border-amber-500/20 bg-amber-500/5'}`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-3.5 h-3.5 border-2 border-t-transparent rounded-full animate-spin flex-shrink-0 ${rebuilding ? 'border-violet-500' : 'border-amber-500'}`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-stone-700 dark:text-zinc-300 truncate">
+                          {rebuilding ? 'Rebuilding' : 'Analyzing'} · {rebuildProgress.current}/{rebuildProgress.total}
+                          {rebuildProgress.current > 0 && (
+                            <span className="ml-2 font-normal text-stone-400 dark:text-zinc-500">
+                              {book.chapters[rebuildProgress.current - 1]?.title}
+                            </span>
+                          )}
+                        </p>
+                        <button
+                          onClick={() => { if (rebuilding) rebuildCancelRef.current = true; else analyzeCancelRef.current = true; }}
+                          className="flex-shrink-0 text-xs text-stone-400 dark:text-zinc-600 hover:text-red-400 dark:hover:text-red-500 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      <div className="mt-2 w-full bg-stone-200 dark:bg-zinc-800 rounded-full h-0.5">
+                        <div
+                          className={`h-0.5 rounded-full transition-all duration-300 ${rebuilding ? 'bg-violet-500' : 'bg-amber-500'}`}
+                          style={{ width: `${(rebuildProgress.current / rebuildProgress.total) * 100}%` }}
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div className="w-56 bg-stone-200 dark:bg-zinc-800 rounded-full h-1">
-                    <div
-                      className={`h-1 rounded-full transition-all duration-300 ${rebuilding ? 'bg-violet-500' : 'bg-amber-500'}`}
-                      style={{ width: `${(rebuildProgress.current / rebuildProgress.total) * 100}%` }}
-                    />
-                  </div>
-                  <p className="text-xs text-stone-300 dark:text-zinc-700">Results update live · cancel anytime</p>
                 </div>
               )}
 
