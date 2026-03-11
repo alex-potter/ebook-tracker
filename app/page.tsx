@@ -183,6 +183,7 @@ async function analyzeChapter(
   bookAuthor: string,
   chapter: { title: string; text: string },
   previousResult: AnalysisResult | null,
+  allChapterTitles?: string[],
 ): Promise<{ result: AnalysisResult; model: string }> {
   if (IS_MOBILE) {
     const { analyzeChapterClient } = await import('@/lib/ai-client');
@@ -203,7 +204,7 @@ async function analyzeChapter(
 
   const body = previousResult
     ? { newChapters: [chapter], previousResult, currentChapterTitle: chapter.title, bookTitle, bookAuthor, ...aiSettings }
-    : { chaptersRead: [chapter], currentChapterTitle: chapter.title, bookTitle, bookAuthor, ...aiSettings };
+    : { chaptersRead: [chapter], allChapterTitles, currentChapterTitle: chapter.title, bookTitle, bookAuthor, ...aiSettings };
 
   const res = await fetch('/api/analyze', {
     method: 'POST',
@@ -444,7 +445,7 @@ export default function Home() {
             continue;
           }
 
-          const { result: chResult, model: chModel } = await analyzeChapter(title, author, { title: ch.title, text: ch.text }, accumulated);
+          const { result: chResult, model: chModel } = await analyzeChapter(title, author, { title: ch.title, text: ch.text }, accumulated, chapters.map((c) => c.title));
           accumulated = chResult;
           snapshots = upsertSnapshot(snapshots, i, accumulated, chModel, APP_VERSION);
           latestStored = { ...latestStored, lastAnalyzedIndex: i, result: accumulated, snapshots };
@@ -629,7 +630,7 @@ export default function Home() {
           }
           continue;
         }
-        const { result: chapterResult, model: chapterModel } = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated);
+        const { result: chapterResult, model: chapterModel } = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated, book.chapters.map((c) => c.title));
         accumulated = chapterResult;
         snapshots = upsertSnapshot(snapshots, i, accumulated, chapterModel, APP_VERSION);
         const partial: StoredBookState = { lastAnalyzedIndex: i, result: accumulated, snapshots };
@@ -673,7 +674,7 @@ export default function Home() {
           continue;
         }
         const chapter = { title: ch.title, text: ch.text };
-        const { result: rebuildResult, model: rebuildModel } = await analyzeChapter(book.title, book.author, chapter, accumulated);
+        const { result: rebuildResult, model: rebuildModel } = await analyzeChapter(book.title, book.author, chapter, accumulated, book.chapters.map((c) => c.title));
         accumulated = rebuildResult;
         snapshots = upsertSnapshot(snapshots, i, accumulated, rebuildModel, APP_VERSION);
         const partial: StoredBookState = { lastAnalyzedIndex: i, result: accumulated, snapshots };

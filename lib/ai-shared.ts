@@ -100,9 +100,12 @@ const MAX_NEW_CHARS = 120_000;
 const MAX_CHARS = 180_000;
 const HEAD_CHARS = 50_000;
 
-export function buildFullPrompt(bookTitle: string, bookAuthor: string, currentChapterTitle: string, text: string): string {
+export function buildFullPrompt(bookTitle: string, bookAuthor: string, currentChapterTitle: string, text: string, allChapterTitles?: string[]): string {
+  const tocBlock = allChapterTitles && allChapterTitles.length > 1
+    ? `\nTABLE OF CONTENTS (${allChapterTitles.length} chapters total — use this to calibrate arc scope):\n${allChapterTitles.map((t, i) => `${i + 1}. ${t}`).join('\n')}\n`
+    : '';
   return `I am reading "${bookTitle}" by ${bookAuthor}. I have just finished the chapter titled "${currentChapterTitle}".
-
+${tocBlock}
 Analyze the text below and extract a COMPLETE character roster — every named character who appears, from major protagonists to characters who appear in a single scene. Do not skip anyone because they seem minor.
 
 TEXT I HAVE READ:
@@ -113,6 +116,7 @@ ARC RULES:
 - Each arc should span multiple chapters and drive meaningful story action.
 - Do not create an arc for every scene; only for threads that have clear ongoing stakes.
 - "status": "active" = ongoing, "resolved" = concluded, "dormant" = paused/not mentioned recently.
+- The table of contents above shows the full scope of the book — create arcs broad enough to last, not micro-arcs for individual scenes.
 
 Return ONLY a JSON object matching this exact schema (no markdown fences, no explanation):
 ${SCHEMA}`;
