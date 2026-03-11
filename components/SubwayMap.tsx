@@ -139,7 +139,7 @@ function findNearestNode(x: number, y: number, nodes: Node[]): Node {
 
 // Returns true only for real, concrete place names.
 // Filters out placeholder values the LLM emits when a location is uncertain.
-const FAKE_LOC_RE = /^(unknown|not specified|unspecified|unclear|n\/a|none|various|en route|in transit|travelling|traveling|returning|heading|journeying|fleeing|marching|riding|sailing|making (his|her|their|its|the) way)/i;
+const FAKE_LOC_RE = /^(unknown|not specified|unspecified|unclear|n\/a|none|various|en route|in transit|travelling|traveling|returning|heading|journeying|fleeing|marching|riding|sailing|making (his|her|their|its|the) way|dead|killed|deceased|slain|captured|imprisoned|on the road|on the move|on (his|her|their|its) way|on the run|whereabouts)/i;
 function isRealLocation(loc: string | undefined): loc is string {
   if (!loc) return false;
   const t = loc.trim();
