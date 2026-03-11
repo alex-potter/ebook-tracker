@@ -57,6 +57,7 @@ export interface AnalysisResult {
 export interface Snapshot {
   index: number;         // chapter index (0-based)
   result: AnalysisResult;
+  model?: string;        // model used to analyze this chapter (e.g. "qwen2.5:14b", "claude-haiku-4-5")
 }
 
 export interface LocationPin {

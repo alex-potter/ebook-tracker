@@ -139,9 +139,9 @@ function bestSnapshot(snapshots: Snapshot[], targetIndex: number): Snapshot | nu
 }
 
 /** Add/replace a snapshot for this index */
-function upsertSnapshot(snapshots: Snapshot[], index: number, result: AnalysisResult): Snapshot[] {
+function upsertSnapshot(snapshots: Snapshot[], index: number, result: AnalysisResult, model?: string): Snapshot[] {
   const without = snapshots.filter((s) => s.index !== index);
-  return [...without, { index, result }];
+  return [...without, { index, result, ...(model ? { model } : {}) }];
 }
 
 function listSavedBooks(excludeTitle?: string, excludeAuthor?: string): SavedBookEntry[] {
@@ -174,10 +174,11 @@ async function analyzeChapter(
   bookAuthor: string,
   chapter: { title: string; text: string },
   previousResult: AnalysisResult | null,
-): Promise<AnalysisResult> {
+): Promise<{ result: AnalysisResult; model: string }> {
   if (IS_MOBILE) {
     const { analyzeChapterClient } = await import('@/lib/ai-client');
-    return analyzeChapterClient(bookTitle, bookAuthor, chapter, previousResult);
+    const result = await analyzeChapterClient(bookTitle, bookAuthor, chapter, previousResult);
+    return { result, model: 'mobile' };
   }
   const body = previousResult
     ? { newChapters: [chapter], previousResult, currentChapterTitle: chapter.title, bookTitle, bookAuthor }
@@ -188,9 +189,10 @@ async function analyzeChapter(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? 'Analysis failed.');
-  return data as AnalysisResult;
+  const data = await res.json() as AnalysisResult & { _model?: string };
+  if (!res.ok) throw new Error((data as unknown as { error?: string }).error ?? 'Analysis failed.');
+  const { _model, ...result } = data;
+  return { result: result as AnalysisResult, model: _model ?? 'unknown' };
 }
 
 export default function Home() {
@@ -478,8 +480,9 @@ export default function Home() {
           }
           continue;
         }
-        accumulated = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated);
-        snapshots = upsertSnapshot(snapshots, i, accumulated);
+        const { result: chapterResult, model: chapterModel } = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated);
+        accumulated = chapterResult;
+        snapshots = upsertSnapshot(snapshots, i, accumulated, chapterModel);
         const partial: StoredBookState = { lastAnalyzedIndex: i, result: accumulated, snapshots };
         storedRef.current = partial;
         saveStored(book.title, book.author, partial);
@@ -521,8 +524,9 @@ export default function Home() {
           continue;
         }
         const chapter = { title: ch.title, text: ch.text };
-        accumulated = await analyzeChapter(book.title, book.author, chapter, accumulated);
-        snapshots = upsertSnapshot(snapshots, i, accumulated);
+        const { result: rebuildResult, model: rebuildModel } = await analyzeChapter(book.title, book.author, chapter, accumulated);
+        accumulated = rebuildResult;
+        snapshots = upsertSnapshot(snapshots, i, accumulated, rebuildModel);
         const partial: StoredBookState = { lastAnalyzedIndex: i, result: accumulated, snapshots };
         storedRef.current = partial;
         saveStored(book.title, book.author, partial);

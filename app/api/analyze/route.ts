@@ -397,6 +397,9 @@ export async function POST(req: NextRequest) {
 
     const useLocal = process.env.USE_LOCAL_MODEL === 'true';
     const isDelta = !!(previousResult && newChapters?.length);
+    const modelName = useLocal
+      ? (process.env.LOCAL_MODEL_NAME ?? 'llama3.1:8b')
+      : 'claude-haiku-4-5-20251001';
 
     let userPrompt: string;
 
@@ -469,7 +472,7 @@ export async function POST(req: NextRequest) {
       const finalResult = isDelta
         ? mergeDelta(previousResult!, { updatedCharacters: r.characters, summary: r.summary })
         : r;
-      return NextResponse.json({ ...finalResult, characters: deduplicateCharacters(finalResult.characters), locations: deduplicateLocations(finalResult.locations) });
+      return NextResponse.json({ ...finalResult, characters: deduplicateCharacters(finalResult.characters), locations: deduplicateLocations(finalResult.locations), _model: modelName });
     }
 
     const parsed = outcome.parsed;
@@ -485,7 +488,7 @@ export async function POST(req: NextRequest) {
     }
 
     result = { ...result, characters: deduplicateCharacters(result.characters), locations: deduplicateLocations(result.locations) };
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, _model: modelName });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[analyze] error:', err);
