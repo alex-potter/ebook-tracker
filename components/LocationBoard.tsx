@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import type { Character, LocationInfo, Snapshot } from '@/types';
 import LocationGraph from './LocationGraph';
 import SubwayMap from './SubwayMap';
+import CharacterModal from './CharacterModal';
 import { withResolvedLocations } from '@/lib/resolve-locations';
 
 interface LocationGroup {
@@ -80,6 +81,7 @@ export default function LocationBoard({ characters, locations, bookTitle, snapsh
   const [view, setView] = useState<'list' | 'graph'>('list');
   const [search, setSearch] = useState('');
   const [expandedLocation, setExpandedLocation] = useState<string | null>(null);
+  const [selectedCharName, setSelectedCharName] = useState<string | null>(null);
   const mapImage = locationImage ?? null;
   const mapLabel = locationLabel;
   const [dragging, setDragging] = useState(false);
@@ -158,8 +160,13 @@ export default function LocationBoard({ characters, locations, bookTitle, snapsh
     }
   }
 
+  const selectedChar = selectedCharName ? characters.find((c) => c.name === selectedCharName) : undefined;
+
   return (
     <div className="space-y-4">
+      {selectedChar && (
+        <CharacterModal character={selectedChar} snapshots={snapshots} onClose={() => setSelectedCharName(null)} />
+      )}
       {/* View toggle */}
       <div className="flex gap-1 bg-stone-100/50 dark:bg-zinc-800/50 rounded-lg p-0.5 w-fit border border-stone-200 dark:border-zinc-800">
         <button
@@ -355,7 +362,11 @@ export default function LocationBoard({ characters, locations, bookTitle, snapsh
                     {!showTimeline && (
                       <ul className="divide-y divide-stone-200/50 dark:divide-zinc-800/50">
                         {chars.map((c) => (
-                          <li key={c.name} className="px-4 py-3 flex items-start gap-3">
+                          <li
+                            key={c.name}
+                            onClick={() => setSelectedCharName(c.name)}
+                            className="px-4 py-3 flex items-start gap-3 cursor-pointer hover:bg-stone-50 dark:hover:bg-zinc-800/50 transition-colors"
+                          >
                             <div className={`flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-xs font-bold ${nameColor(c.name)}`}>
                               {initials(c.name)}
                             </div>
