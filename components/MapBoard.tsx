@@ -155,6 +155,7 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
   const [urlError, setUrlError] = useState<string | null>(null);
   const [trackedCharNames, setTrackedCharNames] = useState<Set<string> | null>(null); // null = all
   const [filterOpen, setFilterOpen] = useState(false);
+  const [charFilterQ, setCharFilterQ] = useState('');
   const [selectedCharName, setSelectedCharName] = useState<string | null>(null);
   const [selectedLocationName, setSelectedLocationName] = useState<string | null>(null);
 
@@ -391,11 +392,18 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
         {characters.length > 0 && (
           <div className="absolute bottom-3 left-3 z-10">
             {filterOpen ? (
-              <div className="bg-white/95 dark:bg-zinc-900/95 border border-stone-300 dark:border-zinc-700 rounded-xl shadow-2xl backdrop-blur-sm p-3 flex flex-col gap-2 w-52 max-h-72">
+              <div className="bg-white/95 dark:bg-zinc-900/95 border border-stone-300 dark:border-zinc-700 rounded-xl shadow-2xl backdrop-blur-sm p-3 flex flex-col gap-2 w-52 max-h-80">
                 <div className="flex items-center justify-between flex-shrink-0">
                   <p className="text-xs font-semibold text-stone-700 dark:text-zinc-300">Track characters</p>
                   <button onClick={() => setFilterOpen(false)} className="text-stone-400 dark:text-zinc-600 hover:text-stone-500 dark:hover:text-zinc-400 text-xs">✕</button>
                 </div>
+                <input
+                  type="search"
+                  placeholder="Search…"
+                  value={charFilterQ}
+                  onChange={(e) => setCharFilterQ(e.target.value)}
+                  className="flex-shrink-0 w-full text-xs px-2 py-1 rounded-lg border outline-none bg-stone-100 dark:bg-zinc-800 border-stone-300 dark:border-zinc-700 text-stone-700 dark:text-zinc-300 placeholder-stone-400 dark:placeholder-zinc-600 focus:border-stone-400 dark:focus:border-zinc-500"
+                />
                 <div className="flex gap-1.5 flex-shrink-0">
                   <button
                     onClick={() => setTrackedCharNames(null)}
@@ -407,7 +415,7 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
                   >None</button>
                 </div>
                 <ul className="overflow-y-auto space-y-0.5 flex-1 min-h-0">
-                  {sortedCharacters.map((c) => {
+                  {sortedCharacters.filter((c) => !charFilterQ.trim() || c.name.toLowerCase().includes(charFilterQ.toLowerCase()) || (c.aliases ?? []).some((a) => a.toLowerCase().includes(charFilterQ.toLowerCase()))).map((c) => {
                     const checked = trackedCharNames === null || trackedCharNames.has(c.name);
                     return (
                       <li key={c.name}>
@@ -561,11 +569,18 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
                     ⊙ {trackedCharNames !== null ? `${trackedCharNames.size}/${characters.length}` : 'Filter'}
                   </button>
                   {filterOpen && (
-                    <div className="absolute top-full mt-1 left-0 bg-white/95 dark:bg-zinc-900/95 border border-stone-300 dark:border-zinc-700 rounded-xl shadow-2xl backdrop-blur-sm p-3 flex flex-col gap-2 w-52 max-h-72 z-30">
+                    <div className="absolute top-full mt-1 left-0 bg-white/95 dark:bg-zinc-900/95 border border-stone-300 dark:border-zinc-700 rounded-xl shadow-2xl backdrop-blur-sm p-3 flex flex-col gap-2 w-52 max-h-80 z-30">
                       <div className="flex items-center justify-between flex-shrink-0">
                         <p className="text-xs font-semibold text-stone-700 dark:text-zinc-300">Track characters</p>
                         <button onClick={() => setFilterOpen(false)} className="text-stone-400 dark:text-zinc-600 hover:text-stone-500 dark:hover:text-zinc-400 text-xs">✕</button>
                       </div>
+                      <input
+                        type="search"
+                        placeholder="Search…"
+                        value={charFilterQ}
+                        onChange={(e) => setCharFilterQ(e.target.value)}
+                        className="flex-shrink-0 w-full text-xs px-2 py-1 rounded-lg border outline-none bg-stone-100 dark:bg-zinc-800 border-stone-300 dark:border-zinc-700 text-stone-700 dark:text-zinc-300 placeholder-stone-400 dark:placeholder-zinc-600 focus:border-stone-400 dark:focus:border-zinc-500"
+                      />
                       <div className="flex gap-1.5 flex-shrink-0">
                         <button
                           onClick={() => setTrackedCharNames(null)}
@@ -577,7 +592,7 @@ export default function MapBoard({ characters, bookTitle, mapState, onMapStateCh
                         >None</button>
                       </div>
                       <ul className="overflow-y-auto space-y-0.5 flex-1 min-h-0">
-                        {sortedCharacters.map((c) => {
+                        {sortedCharacters.filter((c) => !charFilterQ.trim() || c.name.toLowerCase().includes(charFilterQ.toLowerCase()) || (c.aliases ?? []).some((a) => a.toLowerCase().includes(charFilterQ.toLowerCase()))).map((c) => {
                           const checked = trackedCharNames === null || trackedCharNames.has(c.name);
                           return (
                             <li key={c.name}>
