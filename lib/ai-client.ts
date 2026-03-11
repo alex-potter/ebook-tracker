@@ -108,6 +108,60 @@ async function callAi(settings: AiSettings, userPrompt: string): Promise<string>
 }
 
 // ---------------------------------------------------------------------------
+// Multi-turn book chat (used on mobile where there is no Next.js server)
+// ---------------------------------------------------------------------------
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export async function chatWithBook(
+  systemPrompt: string,
+  messages: ChatMessage[],
+  settings: AiSettings,
+): Promise<string> {
+  if (settings.provider === 'anthropic') {
+    if (!settings.anthropicKey) throw new Error('No API key. Open ⚙ Settings to configure.');
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': settings.anthropicKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: settings.model || 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages,
+      }),
+    });
+    if (!res.ok) throw new Error(`Anthropic error (${res.status}): ${await res.text()}`);
+    const data = await res.json();
+    const text = data.content?.find((b: { type: string }) => b.type === 'text')?.text;
+    if (!text) throw new Error('No text in response.');
+    return text;
+  } else {
+    if (!settings.ollamaUrl) throw new Error('No Ollama URL. Open ⚙ Settings to configure.');
+    const url = settings.ollamaUrl.replace(/\/$/, '') + '/chat/completions';
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: settings.model || 'qwen2.5:14b',
+        messages: [{ role: 'system', content: systemPrompt }, ...messages],
+      }),
+    });
+    if (!res.ok) throw new Error(`Ollama error (${res.status}): ${await res.text()}`);
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content;
+    if (!text) throw new Error('No content in response.');
+    return text;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Connection test — lightweight ping to verify credentials/URL work
 // ---------------------------------------------------------------------------
 

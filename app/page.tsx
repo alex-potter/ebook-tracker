@@ -15,6 +15,7 @@ import UploadZone from '@/components/UploadZone';
 import { normalizeTitle } from '@/lib/normalize-title';
 import { saveChapters, loadChapters, deleteChapters } from '@/lib/chapter-storage';
 import ProcessingQueue from '@/components/ProcessingQueue';
+import ChatPanel from '@/components/ChatPanel';
 
 type SortKey = 'importance' | 'name' | 'status';
 type MainTab = 'characters' | 'locations' | 'map';
@@ -250,6 +251,7 @@ export default function Home() {
   const [myBooksRev, setMyBooksRev] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showChat, setShowChat] = useState(false);
 
   async function handleImport(file: File) {
     setImportError(null);
@@ -954,6 +956,15 @@ export default function Home() {
               Export
             </button>
           )}
+          {hasStoredState && (
+            <button
+              onClick={() => setShowChat(true)}
+              className="text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
+              title="Ask your AI assistant about the book"
+            >
+              💬
+            </button>
+          )}
           <button
             onClick={() => setShowSettings(true)}
             className="text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
@@ -1307,6 +1318,19 @@ export default function Home() {
         onCancelCurrent={() => { queueCancelRef.current = true; }}
         onClearDone={() => setQueue((q) => q.filter((j) => j.status !== 'done' && j.status !== 'error'))}
       />
+      {showChat && result && stored && stored.lastAnalyzedIndex >= 0 && (
+        <ChatPanel
+          bookTitle={book.title}
+          bookAuthor={book.author}
+          lastAnalyzedIndex={stored.lastAnalyzedIndex}
+          currentChapterTitle={book.chapters[stored.lastAnalyzedIndex]?.title ?? `Chapter ${stored.lastAnalyzedIndex + 1}`}
+          totalChapters={book.chapters.length}
+          result={result}
+          snapshots={stored.snapshots ?? []}
+          chapterTitles={book.chapters.map((ch) => ch.title)}
+          onClose={() => setShowChat(false)}
+        />
+      )}
     </main>
   );
 }
