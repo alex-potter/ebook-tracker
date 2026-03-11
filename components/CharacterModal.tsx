@@ -79,14 +79,19 @@ export default function CharacterModal({ character, snapshots, chapterTitles, on
     const entries: TimelineEntry[] = [];
     let lastEvents = '';
     const sorted = [...snapshots].sort((a, b) => a.index - b.index);
+    // All normalised names+aliases for the current character (covers rename cases like Strider→Aragorn)
+    const charNameSet = new Set(
+      [character.name, ...(character.aliases ?? [])].map((n) => n.toLowerCase().trim()).filter(Boolean),
+    );
+    const matchesCharacter = (c: { name: string; aliases?: string[] }) =>
+      [c.name, ...(c.aliases ?? [])].some((n) => charNameSet.has(n.toLowerCase().trim()));
+
     for (const snap of sorted) {
-      const ch = snap.result.characters.find(
-        (c) => c.name.toLowerCase() === character.name.toLowerCase(),
-      );
+      const ch = snap.result.characters.find(matchesCharacter);
       if (!ch?.recentEvents || ch.recentEvents === lastEvents) continue;
       lastEvents = ch.recentEvents;
       const interactions = snap.result.characters
-        .filter((c) => c.name.toLowerCase() !== character.name.toLowerCase() && mentionedIn(ch.recentEvents, c))
+        .filter((c) => !matchesCharacter(c) && mentionedIn(ch.recentEvents, c))
         .map((c) => c.name);
       entries.push({
         chapterIndex: snap.index,

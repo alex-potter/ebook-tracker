@@ -236,8 +236,13 @@ function mergeDelta(
   delta: { updatedCharacters?: AnalysisResult['characters']; updatedLocations?: AnalysisResult['locations']; summary?: string },
 ): AnalysisResult {
   const merged = previous.characters.map((c) => ({ ...c }));
+  const norm = (s: string) => s.toLowerCase().trim();
   for (const updated of delta.updatedCharacters ?? []) {
-    const idx = merged.findIndex((c) => c.name.toLowerCase() === updated.name.toLowerCase());
+    // Match by name OR any alias in either direction (handles renames like Strider→Aragorn)
+    const updatedNames = new Set([updated.name, ...(updated.aliases ?? [])].map(norm));
+    const idx = merged.findIndex((c) =>
+      [c.name, ...(c.aliases ?? [])].some((n) => updatedNames.has(norm(n))),
+    );
     if (idx >= 0) {
       merged[idx] = { ...merged[idx], ...updated };
     } else {
