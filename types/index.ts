@@ -43,8 +43,9 @@ export interface Character {
 
 export interface LocationInfo {
   name: string;
-  arc?: string;         // narrative arc / storyline this location belongs to
-  description: string;  // 1–2 sentence description of the place
+  arc?: string;          // narrative arc / storyline this location belongs to
+  description: string;   // 1–2 sentence description of the place
+  recentEvents?: string; // what happened at this location in the most recent chapter
 }
 
 export interface AnalysisResult {

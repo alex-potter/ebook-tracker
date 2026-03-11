@@ -58,7 +58,8 @@ const SCHEMA = `{
     {
       "name": "Proper place name only — a city, station, planet, region, or named landmark (NOT a generic room, corridor, or activity description)",
       "arc": "Short narrative arc label grouping related locations into the same storyline thread (e.g. 'Shire', 'Quest', 'Gondor', 'Rohan'). Use the same label consistently across chapters for the same storyline. If a location belongs to multiple arcs choose the most prominent one.",
-      "description": "1–2 sentence description of this place — what kind of place it is, its significance, atmosphere, or notable features as established in the text"
+      "description": "1–2 sentence description of this place — what kind of place it is, its significance, atmosphere, or notable features as established in the text",
+      "recentEvents": "1–2 sentences describing what happened at this location in the current chapter — key events, arrivals, departures, or confrontations. Omit if nothing notable occurred here."
     }
   ],
   "summary": "2–3 sentence summary of where the story stands as of the current chapter, from the reader's perspective"
@@ -109,7 +110,8 @@ const DELTA_SCHEMA = `{
     {
       "name": "Proper place name only — a city, station, planet, region, or named landmark (NOT a generic room, corridor, or activity description)",
       "arc": "Short narrative arc label grouping related locations into the same storyline thread. Use the same label consistently for the same storyline across all chapters.",
-      "description": "1–2 sentence description of this place as revealed so far"
+      "description": "1–2 sentence description of this place as revealed so far",
+      "recentEvents": "1–2 sentences describing what happened at this location in this chapter — key events, arrivals, departures, or confrontations. Omit if nothing notable occurred here."
     }
   ],
   "summary": "2–3 sentence summary of where the story stands as of the current chapter"
@@ -154,17 +156,19 @@ function normLoc(name: string): string {
 /** Deduplicate locations, merging prefix-word subsets ("Eros" → "Eros Station"). */
 function deduplicateLocations(locs: AnalysisResult['locations']): AnalysisResult['locations'] {
   if (!locs?.length) return locs;
+  type Entry = { canonical: string; description: string; arc?: string; recentEvents?: string };
   // Group by normalised key
-  const groups = new Map<string, { canonical: string; description: string }>();
+  const groups = new Map<string, Entry>();
   for (const loc of locs) {
     const key = normLoc(loc.name);
     const existing = groups.get(key);
     if (existing) {
-      // Keep longer description, prefer longer raw name
       if (loc.name.length > existing.canonical.length) existing.canonical = loc.name;
       if (loc.description.length > existing.description.length) existing.description = loc.description;
+      if (!existing.arc && loc.arc) existing.arc = loc.arc;
+      if (loc.recentEvents && (!existing.recentEvents || loc.recentEvents.length > existing.recentEvents.length)) existing.recentEvents = loc.recentEvents;
     } else {
-      groups.set(key, { canonical: loc.name, description: loc.description });
+      groups.set(key, { canonical: loc.name, description: loc.description, arc: loc.arc, recentEvents: loc.recentEvents });
     }
   }
   // Merge prefix-word subsets: "eros" merges into "eros station"
@@ -178,12 +182,16 @@ function deduplicateLocations(locs: AnalysisResult['locations']): AnalysisResult
         const gl = groups.get(longer)!;
         if (gs.canonical.length > gl.canonical.length) gl.canonical = gs.canonical;
         if (gs.description.length > gl.description.length) gl.description = gs.description;
+        if (!gl.arc && gs.arc) gl.arc = gs.arc;
+        if (gs.recentEvents && (!gl.recentEvents || gs.recentEvents.length > gl.recentEvents.length)) gl.recentEvents = gs.recentEvents;
         groups.delete(shorter);
         break;
       }
     }
   }
-  return [...groups.values()].map(({ canonical, description }) => ({ name: canonical, description }));
+  return [...groups.values()].map(({ canonical, description, arc, recentEvents }) => ({
+    name: canonical, description, ...(arc ? { arc } : {}), ...(recentEvents ? { recentEvents } : {}),
+  }));
 }
 
 /** Merge characters that share a name/alias so nicknames don't create duplicate entries. */

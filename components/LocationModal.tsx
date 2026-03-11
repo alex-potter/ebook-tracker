@@ -32,7 +32,8 @@ const STATUS_DOT: Record<string, string> = {
 
 interface TimelineEntry {
   chapterIndex: number;
-  characters: { name: string; status: string; recentEvents?: string }[];
+  locationEvents?: string;  // from LocationInfo.recentEvents for this snapshot
+  characters: { name: string; status: string }[];
 }
 
 interface Props {
@@ -63,28 +64,29 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
     (c) => c.currentLocation?.trim().toLowerCase() === locationName.toLowerCase().trim(),
   ) ?? [];
 
-  // Build timeline: chapters where at least one character was present here
+  // Build timeline: chapters where something happened at this location
   const timeline: TimelineEntry[] = [];
   let prevCharNames = new Set<string>();
   for (const snap of sorted) {
+    const locInfo = snap.result.locations?.find(
+      (l) => l.name?.toLowerCase().trim() === locationName.toLowerCase().trim(),
+    );
     const present = snap.result.characters.filter(
       (c) => c.currentLocation?.trim().toLowerCase() === locationName.toLowerCase().trim(),
     );
-    if (present.length === 0) { prevCharNames = new Set(); continue; }
 
     const curNames = new Set(present.map((c) => c.name));
-    const hasChange = present.length !== prevCharNames.size || [...curNames].some((n) => !prevCharNames.has(n));
-    if (hasChange) {
+    const charsChanged = present.length !== prevCharNames.size || [...curNames].some((n) => !prevCharNames.has(n));
+    const hasEvents = !!locInfo?.recentEvents;
+
+    if (present.length > 0 && (charsChanged || hasEvents)) {
       timeline.push({
         chapterIndex: snap.index,
-        characters: present.map((c) => ({
-          name: c.name,
-          status: c.status,
-          recentEvents: c.recentEvents,
-        })),
+        locationEvents: locInfo?.recentEvents,
+        characters: present.map((c) => ({ name: c.name, status: c.status })),
       });
     }
-    prevCharNames = curNames;
+    prevCharNames = present.length > 0 ? curNames : new Set();
   }
   const timelineReversed = [...timeline].reverse();
 
@@ -213,6 +215,9 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
                       <p className="text-[11px] font-semibold text-stone-400 dark:text-zinc-500 mb-2">
                         Ch. {entry.chapterIndex + 1}{chapterTitles?.[entry.chapterIndex] ? ` — ${chapterTitles[entry.chapterIndex]}` : ''}
                       </p>
+                      {entry.locationEvents && (
+                        <p className="text-sm text-stone-700 dark:text-zinc-300 leading-relaxed mb-2">{entry.locationEvents}</p>
+                      )}
                       <div className="flex flex-wrap gap-1.5">
                         {entry.characters.map((c) => (
                           <span key={c.name} className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md font-medium ${nameColor(c.name)}`}>
