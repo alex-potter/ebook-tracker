@@ -572,7 +572,12 @@ export default function Home() {
   const displayed = characters
     .filter((c) => {
       if (filter !== 'all' && c.importance !== filter) return false;
-      if (search && !c.name.toLowerCase().includes(search.toLowerCase())) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        const hit = c.name.toLowerCase().includes(q)
+          || (c.aliases ?? []).some((a) => a.toLowerCase().includes(q));
+        if (!hit) return false;
+      }
       return true;
     })
     .sort((a, b) => {
