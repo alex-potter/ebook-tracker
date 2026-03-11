@@ -393,7 +393,15 @@ function mergeDelta(
       [c.name, ...(c.aliases ?? [])].some((n) => updatedNames.has(norm(n))),
     );
     if (idx >= 0) {
-      merged[idx] = { ...merged[idx], ...updated };
+      const existing = merged[idx];
+      const canonicalName = updated.name.length >= existing.name.length ? updated.name : existing.name;
+      const allAliases = [...new Set([
+        ...(existing.aliases ?? []),
+        ...(updated.aliases ?? []),
+        updated.name !== canonicalName ? updated.name : '',
+        existing.name !== canonicalName ? existing.name : '',
+      ].map((s) => s.trim()).filter((s) => s && s.toLowerCase() !== canonicalName.toLowerCase()))];
+      merged[idx] = { ...existing, ...updated, name: canonicalName, aliases: allAliases };
     } else {
       merged.push(updated);
     }
@@ -409,8 +417,15 @@ function mergeDelta(
     );
     if (idx >= 0) {
       const existing = mergedLocations[idx];
-      const mergedAliases = [...new Set([...(existing.aliases ?? []), ...(updated.aliases ?? [])].filter((a) => a.toLowerCase() !== updated.name.toLowerCase() && a.toLowerCase() !== existing.name.toLowerCase()))];
-      mergedLocations[idx] = { ...existing, ...updated, aliases: mergedAliases.length > 0 ? mergedAliases : undefined };
+      // Prefer the longer (more specific) name as canonical
+      const canonicalName = updated.name.length >= existing.name.length ? updated.name : existing.name;
+      const allAliases = [...new Set([
+        ...(existing.aliases ?? []),
+        ...(updated.aliases ?? []),
+        updated.name !== canonicalName ? updated.name : '',
+        existing.name !== canonicalName ? existing.name : '',
+      ].map((s) => s.trim()).filter((s) => s && s.toLowerCase() !== canonicalName.toLowerCase()))];
+      mergedLocations[idx] = { ...existing, ...updated, name: canonicalName, aliases: allAliases.length > 0 ? allAliases : undefined };
     } else {
       mergedLocations.push(updated);
     }
