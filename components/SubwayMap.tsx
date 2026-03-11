@@ -18,7 +18,9 @@ interface Edge {
   source: string;
   target: string;
   weight: number;
-  color: string;
+  color: string;        // primary color (used for station rings)
+  sourceColor: string;  // gradient start — color of source→target travel
+  targetColor: string;  // gradient end   — color of target→source travel
 }
 
 interface CharAvatar {
@@ -142,8 +144,8 @@ function buildGraph(snapshots: Snapshot[]): { nodes: Node[]; edges: Edge[] } {
     }
   }
 
-  // Edges from character movement between consecutive snapshots
-  const edgeCounts = new Map<string, number>();
+  // Track DIRECTED edge counts so A→B and B→A are distinct
+  const dirCounts = new Map<string, number>();
   for (let i = 1; i < sorted.length; i++) {
     const prevMap = new Map<string, string>();
     for (const c of sorted[i - 1].result.characters) {
@@ -154,16 +156,39 @@ function buildGraph(snapshots: Snapshot[]): { nodes: Node[]; edges: Edge[] } {
       const newLoc = c.currentLocation?.trim();
       const oldLoc = prevMap.get(c.name);
       if (!isRealLocation(newLoc) || !isRealLocation(oldLoc) || newLoc === oldLoc) continue;
-      const key = [oldLoc, newLoc].sort().join('\x00');
-      edgeCounts.set(key, (edgeCounts.get(key) ?? 0) + 1);
+      const key = `${oldLoc}\x00${newLoc}`; // directed — no sort
+      dirCounts.set(key, (dirCounts.get(key) ?? 0) + 1);
     }
   }
 
-  const sortedEdges = [...edgeCounts.entries()].sort((a, b) => b[1] - a[1]);
-  const edges: Edge[] = sortedEdges.map(([key, weight], i) => {
-    const [source, target] = key.split('\x00');
-    return { source, target, weight, color: LINE_COLORS[i % LINE_COLORS.length] };
-  });
+  // Assign colors to directed edges by frequency rank
+  const sortedDir = [...dirCounts.entries()].sort((a, b) => b[1] - a[1]);
+  const dirColor = new Map<string, string>();
+  sortedDir.forEach(([key], i) => dirColor.set(key, LINE_COLORS[i % LINE_COLORS.length]));
+
+  // Collapse directed edges into undirected pairs (for physics + rendering)
+  // Each undirected edge stores per-endpoint colors to draw as a gradient
+  const undirMap = new Map<string, { source: string; target: string; weight: number; sourceColor: string; targetColor: string }>();
+  for (const [key, count] of dirCounts) {
+    const [a, b] = key.split('\x00');
+    const pairKey = [a, b].sort().join('\x00');
+    if (!undirMap.has(pairKey)) {
+      const ab = dirColor.get(`${a}\x00${b}`);
+      const ba = dirColor.get(`${b}\x00${a}`);
+      undirMap.set(pairKey, {
+        source: a, target: b, weight: count,
+        sourceColor: ab ?? ba ?? LINE_COLORS[0],
+        targetColor: ba ?? ab ?? LINE_COLORS[0],
+      });
+    } else {
+      undirMap.get(pairKey)!.weight += count;
+    }
+  }
+
+  const edges: Edge[] = [...undirMap.values()].map((e) => ({
+    ...e,
+    color: e.sourceColor,
+  }));
 
   // Nodes = locations with edges + any location seen in any snapshot
   const nodeIds = new Set<string>();
@@ -592,7 +617,9 @@ export default function SubwayMap({ snapshots, currentCharacters = [] }: Props) 
   const overflowBadges: Array<{ x: number; y: number; count: number }> = [];
 
   const nodeData = graph.nodes.map((n) => {
-    const colors = graph.edges.filter((e) => e.source === n.id || e.target === n.id).map((e) => e.color);
+    const colors = graph.edges
+      .filter((e) => e.source === n.id || e.target === n.id)
+      .map((e) => (e.source === n.id ? e.sourceColor : e.targetColor));
     const primaryColor = colors[0] ?? '#71717a';
     const chars = liveByLoc.get(n.id) ?? [];
     const r = chars.length > 0 ? 9 : 6;
@@ -645,11 +672,28 @@ export default function SubwayMap({ snapshots, currentCharacters = [] }: Props) 
           <feGaussianBlur stdDeviation="2.5" result="blur" />
           <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
         </filter>
+        {/* Per-edge directional gradients */}
+        {graph.edges.map((e, i) => {
+          const s = nodeMap.get(e.source);
+          const t = nodeMap.get(e.target);
+          if (!s || !t) return null;
+          return (
+            <linearGradient
+              key={`grad-${i}`}
+              id={`edge-grad-${i}`}
+              gradientUnits="userSpaceOnUse"
+              x1={s.x} y1={s.y} x2={t.x} y2={t.y}
+            >
+              <stop offset="0%" stopColor={e.sourceColor} />
+              <stop offset="100%" stopColor={e.targetColor} />
+            </linearGradient>
+          );
+        })}
       </defs>
 
       {/* Transit lines */}
       <g>
-        {graph.edges.map((e) => {
+        {graph.edges.map((e, i) => {
           const s = nodeMap.get(e.source);
           const t = nodeMap.get(e.target);
           if (!s || !t) return null;
@@ -658,7 +702,7 @@ export default function SubwayMap({ snapshots, currentCharacters = [] }: Props) 
               key={`${e.source}\x00${e.target}`}
               d={subwayPath(s.x, s.y, t.x, t.y)}
               fill="none"
-              stroke={e.color}
+              stroke={e.sourceColor === e.targetColor ? e.sourceColor : `url(#edge-grad-${i})`}
               strokeWidth={2.5 + 2.5 * (e.weight / maxW)}
               strokeLinecap="round"
               strokeLinejoin="round"
