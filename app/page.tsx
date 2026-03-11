@@ -16,10 +16,11 @@ import { normalizeTitle } from '@/lib/normalize-title';
 import { saveChapters, loadChapters, deleteChapters } from '@/lib/chapter-storage';
 import ProcessingQueue from '@/components/ProcessingQueue';
 import ChatPanel from '@/components/ChatPanel';
+import ArcsPanel from '@/components/ArcsPanel';
 import { buildShareMarkdown, shareReadingContext } from '@/lib/share-context';
 
 type SortKey = 'importance' | 'name' | 'status';
-type MainTab = 'characters' | 'locations' | 'map';
+type MainTab = 'characters' | 'locations' | 'map' | 'arcs';
 
 const IMPORTANCE_ORDER: Record<Character['importance'], number> = {
   main: 0,
@@ -1096,6 +1097,7 @@ export default function Home() {
               { key: 'characters', label: 'Characters' },
               { key: 'locations', label: 'Locations' },
               { key: 'map', label: 'Map' },
+              { key: 'arcs', label: 'Arcs' },
             ] as const).map(({ key, label }) => (
               <button
                 key={key}
@@ -1253,7 +1255,7 @@ export default function Home() {
 
               {result && (
                 <div>
-                  {result.summary && (
+                  {result.summary && tab !== 'arcs' && (
                     <div className="mb-5 p-4 bg-stone-50 dark:bg-zinc-900 rounded-xl border border-stone-200 dark:border-zinc-800">
                       <p className="text-xs font-medium text-stone-400 dark:text-zinc-600 uppercase tracking-wider mb-2">Story so far</p>
                       <p className="text-sm text-stone-500 dark:text-zinc-400 leading-relaxed">{result.summary}</p>
@@ -1340,6 +1342,14 @@ export default function Home() {
                         setMapState(next);
                         saveMapState(book.title, book.author, next);
                       }}
+                    />
+                  )}
+
+                  {tab === 'arcs' && (
+                    <ArcsPanel
+                      arcs={result.arcs ?? []}
+                      snapshots={stored?.snapshots ?? []}
+                      chapterTitles={book.chapters.map((ch) => ch.title)}
                     />
                   )}
                 </div>

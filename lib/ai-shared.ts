@@ -48,6 +48,14 @@ export const SCHEMA = `{
       "description": "1–2 sentence description of this place — what kind of place it is, its significance, atmosphere, or notable features as established in the text"
     }
   ],
+  "arcs": [
+    {
+      "name": "Short name for this plot thread (e.g. 'Frodo's journey to Mordor')",
+      "status": "active" | "resolved" | "dormant",
+      "characters": ["character names involved in this arc"],
+      "summary": "1–2 sentences on where this arc stands right now"
+    }
+  ],
   "summary": "2–3 sentence summary of where the story stands as of the current chapter, from the reader's perspective"
 }`;
 
@@ -73,6 +81,14 @@ export const DELTA_SCHEMA = `{
       "description": "1–2 sentence description of this place as revealed so far"
     }
   ],
+  "updatedArcs": [
+    {
+      "name": "Arc name (must exactly match an existing arc name, or be new)",
+      "status": "active" | "resolved" | "dormant",
+      "characters": ["character names involved"],
+      "summary": "1–2 sentences on where this arc stands after this chapter"
+    }
+  ],
   "summary": "2–3 sentence summary of where the story stands as of the current chapter"
 }`;
 
@@ -92,6 +108,12 @@ Analyze the text below and extract a COMPLETE character roster — every named c
 TEXT I HAVE READ:
 ${text}
 
+ARC RULES:
+- Identify 3–7 major plot threads (fewer is better — combine closely related threads into one).
+- Each arc should span multiple chapters and drive meaningful story action.
+- Do not create an arc for every scene; only for threads that have clear ongoing stakes.
+- "status": "active" = ongoing, "resolved" = concluded, "dormant" = paused/not mentioned recently.
+
 Return ONLY a JSON object matching this exact schema (no markdown fences, no explanation):
 ${SCHEMA}`;
 }
@@ -110,11 +132,14 @@ export function buildUpdatePrompt(
   newChaptersText: string,
 ): string {
   const prevCount = previousResult.characters.length;
+  const arcList = (previousResult.arcs ?? [])
+    .map((a) => `- ${a.name} [${a.status}]: ${a.summary}`)
+    .join('\n');
   return `I am reading "${bookTitle}" by ${bookAuthor}. I have just finished the chapter titled "${currentChapterTitle}".
 
 EXISTING CHARACTERS (${prevCount} already tracked — DO NOT reproduce this list in your output):
 ${compactCharacterList(previousResult.characters)}
-
+${arcList ? `\nEXISTING NARRATIVE ARCS (carry forward unchanged arcs; only include in "updatedArcs" if this chapter changes them):\n${arcList}\n` : ''}
 NEW CHAPTER TEXT TO PROCESS:
 ${newChaptersText}
 
@@ -124,8 +149,9 @@ INSTRUCTIONS — RETURN ONLY CHANGES, NOT THE FULL LIST:
 3. For any BRAND NEW named character introduced in this chapter: include them in "updatedCharacters" with all fields filled in.
 4. Do NOT include characters from the existing list who do not appear in the new chapter.
 5. For any location that appears or is described in this chapter: include it in "updatedLocations" with a 1–2 sentence description. Only include locations with meaningful descriptions; omit vague or unnamed places.
-6. Update the summary to reflect the story as of the current chapter.
-7. Do NOT use any knowledge of this book beyond what is listed above and the new chapter text.
+6. For narrative arcs: review existing arcs (listed below) and include in "updatedArcs" only those that progressed, changed status, or are new this chapter. Combine arcs that have merged. Keep the total arc count to 3–7 — prefer merging over multiplying.
+7. Update the summary to reflect the story as of the current chapter.
+8. Do NOT use any knowledge of this book beyond what is listed above and the new chapter text.
 
 Return ONLY a JSON object with "updatedCharacters", "updatedLocations", and "summary" (no markdown fences, no explanation):
 ${DELTA_SCHEMA}`;
@@ -148,7 +174,7 @@ export function truncateForDelta(newText: string): string {
 
 export function mergeDelta(
   previous: AnalysisResult,
-  delta: { updatedCharacters?: AnalysisResult['characters']; updatedLocations?: AnalysisResult['locations']; summary?: string },
+  delta: { updatedCharacters?: AnalysisResult['characters']; updatedLocations?: AnalysisResult['locations']; updatedArcs?: AnalysisResult['arcs']; summary?: string },
 ): AnalysisResult {
   const merged = previous.characters.map((c) => ({ ...c }));
   for (const updated of delta.updatedCharacters ?? []) {
@@ -163,9 +189,17 @@ export function mergeDelta(
     if (idx >= 0) mergedLocations[idx] = { ...mergedLocations[idx], ...updated };
     else mergedLocations.push(updated);
   }
+  const prevArcs = previous.arcs ?? [];
+  const mergedArcs = [...prevArcs];
+  for (const updated of delta.updatedArcs ?? []) {
+    const idx = mergedArcs.findIndex((a) => a.name.toLowerCase() === updated.name.toLowerCase());
+    if (idx >= 0) mergedArcs[idx] = { ...mergedArcs[idx], ...updated };
+    else mergedArcs.push(updated);
+  }
   return {
     characters: merged,
     locations: mergedLocations.length > 0 ? mergedLocations : undefined,
+    arcs: mergedArcs.length > 0 ? mergedArcs : undefined,
     summary: delta.summary ?? previous.summary,
   };
 }

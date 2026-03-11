@@ -48,9 +48,17 @@ export interface LocationInfo {
   recentEvents?: string; // what happened at this location in the most recent chapter
 }
 
+export interface NarrativeArc {
+  name: string;
+  status: 'active' | 'resolved' | 'dormant';
+  characters: string[];   // character names involved
+  summary: string;        // current state of this arc
+}
+
 export interface AnalysisResult {
   characters: Character[];
   locations?: LocationInfo[];
+  arcs?: NarrativeArc[];
   summary: string;
 }
 
