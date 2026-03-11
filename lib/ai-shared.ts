@@ -45,7 +45,10 @@ export const SCHEMA = `{
   "locations": [
     {
       "name": "Location name (must match a currentLocation value used above)",
-      "description": "1–2 sentence description of this place — what kind of place it is, its significance, atmosphere, or notable features as established in the text"
+      "description": "1–2 sentence description of this place — what kind of place it is, its significance, atmosphere, or notable features as established in the text",
+      "relationships": [
+        { "location": "Another location name", "relationship": "How these places relate — e.g. 'contains', 'part of', 'adjacent to', 'connected by road to', 'visible from', 'governs'" }
+      ]
     }
   ],
   "arcs": [
@@ -78,7 +81,10 @@ export const DELTA_SCHEMA = `{
   "updatedLocations": [
     {
       "name": "Location name",
-      "description": "1–2 sentence description of this place as revealed so far"
+      "description": "1–2 sentence description of this place as revealed so far",
+      "relationships": [
+        { "location": "Another location name", "relationship": "How these places relate — e.g. 'contains', 'part of', 'adjacent to', 'connected by road to', 'visible from', 'governs'" }
+      ]
     }
   ],
   "updatedArcs": [

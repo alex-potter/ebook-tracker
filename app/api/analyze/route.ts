@@ -59,7 +59,10 @@ const SCHEMA = `{
       "name": "Broad canonical place name — city, castle, region, planet, ship (NOT a generic room, corridor, or sub-location). Prefer the containing location over sub-locations.",
       "arc": "Short narrative arc label (2–4 words max) grouping related locations into the same broad storyline thread. Aim for 3–5 arc labels total for the whole book — broad strokes like 'The Journey', 'The War', 'The Shire', not a new label per chapter. If a location fits an existing arc, use that exact label.",
       "description": "1–2 sentence description of this place — what kind of place it is, its significance, atmosphere, or notable features as established in the text",
-      "recentEvents": "1–2 sentences describing what happened at this location in the current chapter — key events, arrivals, departures, or confrontations. Omit if nothing notable occurred here."
+      "recentEvents": "1–2 sentences describing what happened at this location in the current chapter — key events, arrivals, departures, or confrontations. Omit if nothing notable occurred here.",
+      "relationships": [
+        { "location": "Another location name", "relationship": "How these places relate — e.g. 'contains', 'part of', 'adjacent to', 'connected by road to', 'visible from', 'governs', 'supplies'" }
+      ]
     }
   ],
   "arcs": [
@@ -142,7 +145,10 @@ const DELTA_SCHEMA = `{
       "name": "Broad canonical place name — city, castle, region, planet, ship. Prefer the name of the containing location over sub-locations (use 'Minas Tirith' not 'the great hall of Minas Tirith'). Use an EXISTING LOCATION NAME if the place is the same, nearby, or contained within it.",
       "arc": "Use one of the EXISTING ARC LABELS listed above whenever it fits. Only create a new label if no existing one applies — and keep the total number of distinct arcs to 5 or fewer for the whole book.",
       "description": "1–2 sentence description of this place as revealed so far",
-      "recentEvents": "1–2 sentences describing what happened at this location in this chapter — key events, arrivals, departures, or confrontations. Omit if nothing notable occurred here."
+      "recentEvents": "1–2 sentences describing what happened at this location in this chapter — key events, arrivals, departures, or confrontations. Omit if nothing notable occurred here.",
+      "relationships": [
+        { "location": "Another location name", "relationship": "How these places relate — e.g. 'contains', 'part of', 'adjacent to', 'connected by road to', 'visible from', 'governs', 'supplies'" }
+      ]
     }
   ],
   "updatedArcs": [
@@ -210,7 +216,13 @@ function normLoc(name: string): string {
 /** Deduplicate locations, merging prefix-word subsets ("Eros" → "Eros Station"). */
 function deduplicateLocations(locs: AnalysisResult['locations']): AnalysisResult['locations'] {
   if (!locs?.length) return locs;
-  type Entry = { canonical: string; description: string; arc?: string; recentEvents?: string };
+  type LocRel = { location: string; relationship: string };
+  type Entry = { canonical: string; description: string; arc?: string; recentEvents?: string; relationships: LocRel[] };
+  function mergeRels(a: LocRel[], b: LocRel[]): LocRel[] {
+    const seen = new Map(a.map((r) => [r.location.toLowerCase(), r]));
+    for (const r of b) if (!seen.has(r.location.toLowerCase())) seen.set(r.location.toLowerCase(), r);
+    return [...seen.values()];
+  }
   // Group by normalised key
   const groups = new Map<string, Entry>();
   for (const loc of locs) {
@@ -221,8 +233,9 @@ function deduplicateLocations(locs: AnalysisResult['locations']): AnalysisResult
       if (loc.description.length > existing.description.length) existing.description = loc.description;
       if (!existing.arc && loc.arc) existing.arc = loc.arc;
       if (loc.recentEvents && (!existing.recentEvents || loc.recentEvents.length > existing.recentEvents.length)) existing.recentEvents = loc.recentEvents;
+      if (loc.relationships?.length) existing.relationships = mergeRels(existing.relationships, loc.relationships);
     } else {
-      groups.set(key, { canonical: loc.name, description: loc.description, arc: loc.arc, recentEvents: loc.recentEvents });
+      groups.set(key, { canonical: loc.name, description: loc.description, arc: loc.arc, recentEvents: loc.recentEvents, relationships: loc.relationships ?? [] });
     }
   }
   // Merge prefix-word subsets: "eros" merges into "eros station"
@@ -238,13 +251,17 @@ function deduplicateLocations(locs: AnalysisResult['locations']): AnalysisResult
         if (gs.description.length > gl.description.length) gl.description = gs.description;
         if (!gl.arc && gs.arc) gl.arc = gs.arc;
         if (gs.recentEvents && (!gl.recentEvents || gs.recentEvents.length > gl.recentEvents.length)) gl.recentEvents = gs.recentEvents;
+        gl.relationships = mergeRels(gl.relationships, gs.relationships);
         groups.delete(shorter);
         break;
       }
     }
   }
-  return [...groups.values()].map(({ canonical, description, arc, recentEvents }) => ({
-    name: canonical, description, ...(arc ? { arc } : {}), ...(recentEvents ? { recentEvents } : {}),
+  return [...groups.values()].map(({ canonical, description, arc, recentEvents, relationships }) => ({
+    name: canonical, description,
+    ...(arc ? { arc } : {}),
+    ...(recentEvents ? { recentEvents } : {}),
+    ...(relationships.length > 0 ? { relationships } : {}),
   }));
 }
 

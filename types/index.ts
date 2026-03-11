@@ -41,11 +41,17 @@ export interface Character {
   recentEvents: string;
 }
 
+export interface LocationRelationship {
+  location: string;      // the related location name
+  relationship: string;  // e.g. "contains", "part of", "adjacent to", "accessible via"
+}
+
 export interface LocationInfo {
   name: string;
-  arc?: string;          // narrative arc / storyline this location belongs to
-  description: string;   // 1–2 sentence description of the place
-  recentEvents?: string; // what happened at this location in the most recent chapter
+  arc?: string;                          // narrative arc / storyline this location belongs to
+  description: string;                   // 1–2 sentence description of the place
+  recentEvents?: string;                 // what happened at this location in the most recent chapter
+  relationships?: LocationRelationship[]; // how this place relates to other known places
 }
 
 export interface NarrativeArc {
