@@ -773,13 +773,21 @@ export default function Home() {
               {label}
             </button>
           ))}
-          <button
-            onClick={() => setShowSettings(true)}
-            className="flex-shrink-0 ml-auto pb-2 pl-2 text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
-            title="AI Settings"
-          >
-            ⚙ Settings
-          </button>
+          <div className="flex-shrink-0 ml-auto pb-2 pl-2 flex items-center gap-2">
+            <ProcessingQueue
+              jobs={queue}
+              onRemove={(id) => setQueue((q) => q.filter((j) => j.id !== id))}
+              onCancelCurrent={() => { queueCancelRef.current = true; }}
+              onClearDone={() => setQueue((q) => q.filter((j) => j.status !== 'done' && j.status !== 'error'))}
+            />
+            <button
+              onClick={() => setShowSettings(true)}
+              className="text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
+              title="AI Settings"
+            >
+              ⚙ Settings
+            </button>
+          </div>
         </div>
         <div className="flex-1 p-4 sm:p-6">
           {uploadTab === 'file' ? (
@@ -921,12 +929,6 @@ export default function Home() {
             </div>
           )}
         </div>
-        <ProcessingQueue
-          jobs={queue}
-          onRemove={(id) => setQueue((q) => q.filter((j) => j.id !== id))}
-          onCancelCurrent={() => { queueCancelRef.current = true; }}
-          onClearDone={() => setQueue((q) => q.filter((j) => j.status !== 'done' && j.status !== 'error'))}
-        />
       </main>
     );
   }
@@ -964,6 +966,12 @@ export default function Home() {
           </div>
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
+          <ProcessingQueue
+            jobs={queue}
+            onRemove={(id) => setQueue((q) => q.filter((j) => j.id !== id))}
+            onCancelCurrent={() => { queueCancelRef.current = true; }}
+            onClearDone={() => setQueue((q) => q.filter((j) => j.status !== 'done' && j.status !== 'error'))}
+          />
           {isSeriesContinuation && <span className="hidden sm:inline text-xs text-violet-400 font-medium">Series mode</span>}
           {hasStoredState && <span className="hidden md:inline text-xs text-stone-400 dark:text-zinc-600">Saved · ch.{stored.lastAnalyzedIndex + 1}</span>}
           {hasStoredState && (
@@ -1340,12 +1348,6 @@ export default function Home() {
           )}
         </div>
       </div>
-      <ProcessingQueue
-        jobs={queue}
-        onRemove={(id) => setQueue((q) => q.filter((j) => j.id !== id))}
-        onCancelCurrent={() => { queueCancelRef.current = true; }}
-        onClearDone={() => setQueue((q) => q.filter((j) => j.status !== 'done' && j.status !== 'error'))}
-      />
       {showChat && result && stored && stored.lastAnalyzedIndex >= 0 && (
         <ChatPanel
           bookTitle={book.title}
