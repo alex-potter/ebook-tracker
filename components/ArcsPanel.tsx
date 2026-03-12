@@ -1,6 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import type { NarrativeArc, Snapshot } from '@/types';
+import NarrativeArcModal from '@/components/NarrativeArcModal';
 
 interface Props {
   arcs: NarrativeArc[];
@@ -15,6 +17,7 @@ const STATUS_CONFIG = {
 };
 
 export default function ArcsPanel({ arcs, snapshots, chapterTitles }: Props) {
+  const [selectedArc, setSelectedArc] = useState<string | null>(null);
   if (arcs.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
@@ -51,6 +54,15 @@ export default function ArcsPanel({ arcs, snapshots, chapterTitles }: Props) {
   const totalChapters = Math.max(...snapshots.map((s) => s.index), 0) + 1;
 
   return (
+    <>
+    {selectedArc && (
+      <NarrativeArcModal
+        arcName={selectedArc}
+        snapshots={snapshots}
+        chapterTitles={chapterTitles}
+        onClose={() => setSelectedArc(null)}
+      />
+    )}
     <div className="space-y-4">
       {sorted.map((arc) => {
         const cfg = STATUS_CONFIG[arc.status];
@@ -59,9 +71,10 @@ export default function ArcsPanel({ arcs, snapshots, chapterTitles }: Props) {
         const lastCh = chapters[chapters.length - 1] ?? null;
 
         return (
-          <div
+          <button
             key={arc.name}
-            className="rounded-xl border border-stone-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 space-y-3"
+            onClick={() => setSelectedArc(arc.name)}
+            className="w-full text-left rounded-xl border border-stone-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 space-y-3 hover:border-stone-300 dark:hover:border-zinc-700 hover:shadow-sm transition-all cursor-pointer"
           >
             {/* Header row */}
             <div className="flex items-start justify-between gap-3">
@@ -125,9 +138,10 @@ export default function ArcsPanel({ arcs, snapshots, chapterTitles }: Props) {
                 </div>
               </div>
             )}
-          </div>
+          </button>
         );
       })}
     </div>
+    </>
   );
 }
