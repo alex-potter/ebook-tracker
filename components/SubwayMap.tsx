@@ -913,40 +913,87 @@ export default function SubwayMap({ snapshots, currentCharacters = [], onCharact
         );
       })()}
 
-      {/* Transit lines — bidirectional edges render as two parallel coloured tracks */}
-      <g>
-        {graph.edges.map((e) => {
-          const s = nodeMap.get(e.source);
-          const t = nodeMap.get(e.target);
-          if (!s || !t) return null;
-          const bidir = e.sourceColor !== e.targetColor;
-          const lineW = 1.5 + 1.5 * (e.weight / maxW);
-          if (bidir) {
-            // Two side-by-side tracks, each carrying traffic in one direction
-            const gap = lineW * 0.6 + 0.5;
-            const [ox, oy] = perpOffset(s.x, s.y, t.x, t.y, gap);
-            return (
-              <g key={`${e.source}\x00${e.target}`}>
-                <path d={offsetSubwayPath(s.x, s.y, t.x, t.y,  ox,  oy)} fill="none" stroke={e.sourceColor} strokeWidth={lineW} strokeLinecap="round" strokeLinejoin="round" opacity={0.7} />
-                <path d={offsetSubwayPath(s.x, s.y, t.x, t.y, -ox, -oy)} fill="none" stroke={e.targetColor} strokeWidth={lineW} strokeLinecap="round" strokeLinejoin="round" opacity={0.7} />
-              </g>
-            );
+      {/* Transit lines
+          Each edge gets a perpendicular slot offset computed from its angular rank
+          among all edges at each endpoint — this separates lines that would otherwise
+          overlap when two edges arrive at the same node from similar directions.
+          Bidirectional edges occupy two adjacent sub-slots (one per direction). */}
+      {(() => {
+        const LINE_SEP = 3.2; // px between the centres of adjacent parallel lines
+
+        // Expand each undirected edge into directed "line ends":
+        // bidir edge → 2 line-ends per node; single → 1 line-end per node.
+        // lineEndKey = `${fromNode}\x00${toNode}::${color}` (unique per directed line)
+        type LineEnd = { fromId: string; toId: string; color: string };
+        const allLineEnds: LineEnd[] = [];
+        for (const e of graph.edges) {
+          allLineEnds.push({ fromId: e.source, toId: e.target, color: e.sourceColor });
+          if (e.sourceColor !== e.targetColor) {
+            allLineEnds.push({ fromId: e.target, toId: e.source, color: e.targetColor });
           }
-          // Single direction — one solid line
-          return (
-            <path
-              key={`${e.source}\x00${e.target}`}
-              d={subwayPath(s.x, s.y, t.x, t.y)}
-              fill="none"
-              stroke={e.sourceColor}
-              strokeWidth={lineW * 2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              opacity={0.65}
-            />
-          );
-        })}
-      </g>
+        }
+
+        // For each node, sort its incident line-ends by angle and assign lateral slots
+        // slot: `${fromId}\x00${toId}::${color}` → perpendicular offset at `fromId`
+        const slotAt = new Map<string, number>();
+        for (const node of graph.nodes) {
+          const inc = allLineEnds
+            .filter(le => le.fromId === node.id)
+            .map(le => {
+              const other = nodeMap.get(le.toId);
+              return { le, angle: other ? Math.atan2(other.y - node.y, other.x - node.x) : 0 };
+            })
+            .sort((a, b) => a.angle - b.angle);
+          if (inc.length <= 1) continue;
+          inc.forEach(({ le }, i) => {
+            const slot = (i - (inc.length - 1) / 2) * LINE_SEP;
+            slotAt.set(`${le.fromId}\x00${le.toId}::${le.color}`, slot);
+          });
+        }
+
+        // Average the slot at each end of the line to get a single uniform offset
+        function lineOffset(fromId: string, toId: string, color: string): number {
+          const fwd = slotAt.get(`${fromId}\x00${toId}::${color}`) ?? 0;
+          const rev = slotAt.get(`${toId}\x00${fromId}::${color}`) ?? 0;
+          return (fwd - rev) / 2; // rev is from the other end — flip sign
+        }
+
+        const lineW = (weight: number) => 1.5 + 1.5 * (weight / maxW);
+
+        return (
+          <g>
+            {graph.edges.map((e) => {
+              const s = nodeMap.get(e.source);
+              const t = nodeMap.get(e.target);
+              if (!s || !t) return null;
+              const bidir = e.sourceColor !== e.targetColor;
+              const lw = lineW(e.weight);
+              const key = `${e.source}\x00${e.target}`;
+
+              if (bidir) {
+                const off1 = lineOffset(e.source, e.target, e.sourceColor);
+                const off2 = lineOffset(e.target, e.source, e.targetColor);
+                const [ox1, oy1] = perpOffset(s.x, s.y, t.x, t.y, off1);
+                const [ox2, oy2] = perpOffset(s.x, s.y, t.x, t.y, off2);
+                return (
+                  <g key={key}>
+                    <path d={offsetSubwayPath(s.x, s.y, t.x, t.y, ox1, oy1)} fill="none" stroke={e.sourceColor} strokeWidth={lw} strokeLinecap="round" strokeLinejoin="round" opacity={0.7} />
+                    <path d={offsetSubwayPath(s.x, s.y, t.x, t.y, ox2, oy2)} fill="none" stroke={e.targetColor} strokeWidth={lw} strokeLinecap="round" strokeLinejoin="round" opacity={0.7} />
+                  </g>
+                );
+              }
+
+              const off = lineOffset(e.source, e.target, e.sourceColor);
+              const [ox, oy] = perpOffset(s.x, s.y, t.x, t.y, off);
+              return (
+                <path key={key} d={offsetSubwayPath(s.x, s.y, t.x, t.y, ox, oy)}
+                  fill="none" stroke={e.sourceColor} strokeWidth={lw * 2}
+                  strokeLinecap="round" strokeLinejoin="round" opacity={0.65} />
+              );
+            })}
+          </g>
+        );
+      })()}
 
       {/* Active train route highlights — bright overlay on paths while characters travel */}
       {activeRoutes.map(({ x1, y1, x2, y2 }, i) => (
