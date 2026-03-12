@@ -540,6 +540,29 @@ export default function ChapterSelector({
         <p className="text-xs font-medium text-stone-400 dark:text-zinc-600 uppercase tracking-wider mb-2">Chapters</p>
 
         {isOmnibus ? (
+          // If both range boundaries fall within the same book group, promote its
+          // chapters to a clean flat list and hide all other groups.
+          (() => {
+            const focusedGroup = (rangeStart !== undefined && rangeEnd !== undefined)
+              ? [...bookGroups.entries()].find(([, { items }]) => {
+                  const indices = items.map((it) => it.globalIndex);
+                  return indices.includes(rangeStart) && indices.includes(rangeEnd);
+                })
+              : undefined;
+
+            if (focusedGroup) {
+              const [focusedBookIdx, { items }] = focusedGroup;
+              const isFocusedExcluded = excludedBooks?.has(focusedBookIdx) ?? false;
+              return (
+                <ul className="space-y-0.5">
+                  {items.map(({ ch, globalIndex }) => (
+                    <ChapterItem key={ch.id} ch={ch} globalIndex={globalIndex} isExcluded={isFocusedExcluded || (excludedChapters?.has(globalIndex) ?? false)} isRangeStart={rangeStart === globalIndex} isRangeEnd={rangeEnd === globalIndex} {...itemProps} />
+                  ))}
+                </ul>
+              );
+            }
+
+            return (
           <ul className="space-y-1.5">
             {[...bookGroups.entries()].map(([bookIdx, { bookTitle, items }]) => {
               const isExpanded = expandedBooks.has(bookIdx);
@@ -602,6 +625,8 @@ export default function ChapterSelector({
               );
             })}
           </ul>
+            );
+          })()
         ) : (
           /* Flat list for non-omnibus */
           <ul className="space-y-0.5">
