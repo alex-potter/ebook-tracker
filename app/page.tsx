@@ -615,6 +615,20 @@ export default function Home() {
     activateBook(pendingBook, null);
   }
 
+  /** Indices of chapters in [from, to] that are neither excluded nor front-matter. */
+  function analyzableIndices(from: number, to: number): number[] {
+    if (!book) return [];
+    const result: number[] = [];
+    for (let i = from; i <= to; i++) {
+      const ch = book.chapters[i];
+      if (!ch) continue;
+      if (ch.bookIndex !== undefined && excludedBooks.has(ch.bookIndex)) continue;
+      if (excludedChapters.has(i) || isFrontMatter(ch)) continue;
+      result.push(i);
+    }
+    return result;
+  }
+
   const handleAnalyze = useCallback(async () => {
     if (!book) return;
     analyzeCancelRef.current = false;
@@ -627,7 +641,9 @@ export default function Home() {
     const lastAnalyzed = stored && stored.lastAnalyzedIndex >= 0 ? stored.lastAnalyzedIndex : -1;
     const startIndex = Math.max(lastAnalyzed + 1, rangeStart);
     const endIndex = Math.min(currentIndex, rangeEnd);
-    const total = endIndex - startIndex + 1;
+    const toAnalyze = analyzableIndices(startIndex, endIndex);
+    const total = toAnalyze.length;
+    if (total === 0) { setAnalyzing(false); setRebuildProgress(null); return; }
     setRebuildProgress({ current: 0, total });
 
     let accumulated: AnalysisResult | null =
@@ -636,20 +652,11 @@ export default function Home() {
     const analyzeBase = stored ?? { lastAnalyzedIndex: -1, result: { characters: [], summary: '' }, snapshots: [] };
 
     try {
-      for (let i = startIndex; i <= endIndex; i++) {
+      for (let step = 0; step < toAnalyze.length; step++) {
         if (analyzeCancelRef.current) break;
-        setRebuildProgress({ current: i - startIndex + 1, total });
+        const i = toAnalyze[step];
+        setRebuildProgress({ current: step + 1, total });
         const ch = book.chapters[i];
-        if (ch.bookIndex !== undefined && excludedBooks.has(ch.bookIndex)) continue;
-        if (excludedChapters.has(i) || isFrontMatter(ch)) {
-          if (accumulated) {
-            snapshots = upsertSnapshot(snapshots, i, accumulated);
-            const partial: StoredBookState = { ...analyzeBase, lastAnalyzedIndex: i, result: accumulated, snapshots };
-            storedRef.current = partial;
-            saveStored(book.title, book.author, partial);
-          }
-          continue;
-        }
         const { result: chapterResult, model: chapterModel } = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated, book.chapters.map((c) => c.title));
         accumulated = chapterResult;
         snapshots = upsertSnapshot(snapshots, i, accumulated, chapterModel, APP_VERSION);
@@ -675,7 +682,9 @@ export default function Home() {
     setAnalyzeError(null);
     const rebuildRangeStart = chapterRange?.start ?? 0;
     const rebuildRangeEnd = Math.min(currentIndex, chapterRange?.end ?? currentIndex);
-    const rebuildTotal = rebuildRangeEnd - rebuildRangeStart + 1;
+    const toRebuild = analyzableIndices(rebuildRangeStart, rebuildRangeEnd);
+    const rebuildTotal = toRebuild.length;
+    if (rebuildTotal === 0) { setRebuilding(false); setRebuildProgress(null); return; }
     setRebuildProgress({ current: 0, total: rebuildTotal });
 
     let accumulated: AnalysisResult | null = seriesBaseRef.current;
@@ -683,22 +692,12 @@ export default function Home() {
     const rebuildBase = storedRef.current ?? { lastAnalyzedIndex: -1, result: { characters: [], summary: '' }, snapshots: [] };
 
     try {
-      for (let i = rebuildRangeStart; i <= rebuildRangeEnd; i++) {
+      for (let step = 0; step < toRebuild.length; step++) {
         if (rebuildCancelRef.current) break;
-        setRebuildProgress({ current: i - rebuildRangeStart + 1, total: rebuildTotal });
+        const i = toRebuild[step];
+        setRebuildProgress({ current: step + 1, total: rebuildTotal });
         const ch = book.chapters[i];
-        if (ch.bookIndex !== undefined && excludedBooks.has(ch.bookIndex)) continue;
-        if (excludedChapters.has(i) || isFrontMatter(ch)) {
-          if (accumulated) {
-            snapshots = upsertSnapshot(snapshots, i, accumulated);
-            const partial: StoredBookState = { ...rebuildBase, lastAnalyzedIndex: i, result: accumulated, snapshots };
-            storedRef.current = partial;
-            saveStored(book.title, book.author, partial);
-          }
-          continue;
-        }
-        const chapter = { title: ch.title, text: ch.text };
-        const { result: rebuildResult, model: rebuildModel } = await analyzeChapter(book.title, book.author, chapter, accumulated, book.chapters.map((c) => c.title));
+        const { result: rebuildResult, model: rebuildModel } = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated, book.chapters.map((c) => c.title));
         accumulated = rebuildResult;
         snapshots = upsertSnapshot(snapshots, i, accumulated, rebuildModel, APP_VERSION);
         const partial: StoredBookState = { ...rebuildBase, lastAnalyzedIndex: i, result: accumulated, snapshots };
@@ -724,7 +723,9 @@ export default function Home() {
     setAnalyzeError(null);
     const rangeStart = chapterRange?.start ?? 0;
     const rangeEnd = chapterRange?.end ?? (book.chapters.length - 1);
-    const total = rangeEnd - rangeStart + 1;
+    const toProcess = analyzableIndices(rangeStart, rangeEnd);
+    const total = toProcess.length;
+    if (total === 0) { setRebuilding(false); setRebuildProgress(null); return; }
     setRebuildProgress({ current: 0, total });
 
     let accumulated: AnalysisResult | null = seriesBaseRef.current;
@@ -732,22 +733,12 @@ export default function Home() {
     const processBase = storedRef.current ?? { lastAnalyzedIndex: -1, result: { characters: [], summary: '' }, snapshots: [] };
 
     try {
-      for (let i = rangeStart; i <= rangeEnd; i++) {
+      for (let step = 0; step < toProcess.length; step++) {
         if (rebuildCancelRef.current) break;
-        setRebuildProgress({ current: i - rangeStart + 1, total });
+        const i = toProcess[step];
+        setRebuildProgress({ current: step + 1, total });
         const ch = book.chapters[i];
-        if (ch.bookIndex !== undefined && excludedBooks.has(ch.bookIndex)) continue;
-        if (excludedChapters.has(i) || isFrontMatter(ch)) {
-          if (accumulated) {
-            snapshots = upsertSnapshot(snapshots, i, accumulated);
-            const partial: StoredBookState = { ...processBase, lastAnalyzedIndex: i, result: accumulated, snapshots };
-            storedRef.current = partial;
-            saveStored(book.title, book.author, partial);
-          }
-          continue;
-        }
-        const chapter = { title: ch.title, text: ch.text };
-        const { result: chResult, model: chModel } = await analyzeChapter(book.title, book.author, chapter, accumulated, book.chapters.map((c) => c.title));
+        const { result: chResult, model: chModel } = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated, book.chapters.map((c) => c.title));
         accumulated = chResult;
         snapshots = upsertSnapshot(snapshots, i, accumulated, chModel, APP_VERSION);
         const partial: StoredBookState = { ...processBase, lastAnalyzedIndex: i, result: accumulated, snapshots };
