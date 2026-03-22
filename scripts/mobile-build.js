@@ -12,7 +12,7 @@ fs.rmSync(path.join(root, '.next'), { recursive: true, force: true });
 fs.cpSync(apiDir, bakDir, { recursive: true });
 fs.rmSync(apiDir, { recursive: true, force: true });
 try {
-  execSync('cross-env NEXT_PUBLIC_MOBILE=true next build', { stdio: 'inherit', cwd: root });
+  execSync('npx cross-env NEXT_PUBLIC_MOBILE=true next build', { stdio: 'inherit', cwd: root });
 } finally {
   fs.cpSync(bakDir, apiDir, { recursive: true });
   fs.rmSync(bakDir, { recursive: true, force: true });
