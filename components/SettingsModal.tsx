@@ -108,8 +108,7 @@ export default function SettingsModal({ onClose }: Props) {
                 className="w-full bg-stone-100 dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-stone-800 dark:text-zinc-200 focus:outline-none focus:border-amber-500/50"
               />
               <p className="mt-1 text-xs text-stone-400 dark:text-zinc-600">
-                On Android/phone, use your PC&apos;s local IP instead of localhost.
-                Ollama needs <code className="text-stone-500 dark:text-zinc-500">OLLAMA_ORIGINS=*</code> to allow cross-origin requests.
+                On mobile, use your PC&apos;s local IP. Requires <code className="text-stone-500 dark:text-zinc-500">OLLAMA_ORIGINS=*</code> — see setup guide below.
               </p>
             </div>
 
@@ -147,18 +146,35 @@ export default function SettingsModal({ onClose }: Props) {
               </button>
               {guideOpen && (
                 <div className="px-3 pb-3 space-y-2 text-xs text-stone-500 dark:text-zinc-400">
-                  <p>To use Ollama from this site, allow cross-origin requests:</p>
+                  <p>Ollama must allow cross-origin requests by setting <code className="text-stone-500 dark:text-zinc-500">OLLAMA_ORIGINS=*</code>. Since Ollama typically runs as a background service, set this as a persistent environment variable:</p>
+
                   <div className="space-y-1.5">
-                    <p className="font-medium text-stone-600 dark:text-zinc-300">macOS / Linux:</p>
-                    <pre className="bg-stone-100 dark:bg-zinc-800 rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto">OLLAMA_ORIGINS=* ollama serve</pre>
-                    <p className="font-medium text-stone-600 dark:text-zinc-300">Windows (PowerShell):</p>
-                    <pre className="bg-stone-100 dark:bg-zinc-800 rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto">$env:OLLAMA_ORIGINS=&quot;*&quot;; ollama serve</pre>
-                    <p className="font-medium text-stone-600 dark:text-zinc-300">Windows (cmd):</p>
-                    <pre className="bg-stone-100 dark:bg-zinc-800 rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto">set OLLAMA_ORIGINS=* &amp;&amp; ollama serve</pre>
+                    <p className="font-medium text-stone-600 dark:text-zinc-300">Windows:</p>
+                    <p>Set via Settings &gt; System &gt; Environment Variables, or run:</p>
+                    <pre className="bg-stone-100 dark:bg-zinc-800 rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto">setx OLLAMA_ORIGINS &quot;*&quot;</pre>
+                    <p>Then quit Ollama from the system tray and reopen it.</p>
+
+                    <p className="font-medium text-stone-600 dark:text-zinc-300">macOS:</p>
+                    <pre className="bg-stone-100 dark:bg-zinc-800 rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto">launchctl setenv OLLAMA_ORIGINS &quot;*&quot;</pre>
+                    <p>Then quit and reopen Ollama from the menu bar.</p>
+
+                    <p className="font-medium text-stone-600 dark:text-zinc-300">Linux (systemd):</p>
+                    <pre className="bg-stone-100 dark:bg-zinc-800 rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto whitespace-pre-wrap">{`sudo systemctl edit ollama\n# Add under [Service]:\n# Environment="OLLAMA_ORIGINS=*"\nsudo systemctl restart ollama`}</pre>
+
                     <p className="font-medium text-stone-600 dark:text-zinc-300">Docker:</p>
                     <pre className="bg-stone-100 dark:bg-zinc-800 rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto">docker run -e OLLAMA_ORIGINS=* -p 11434:11434 ollama/ollama</pre>
                   </div>
-                  <p className="text-stone-400 dark:text-zinc-500">Restart Ollama after changing the environment variable.</p>
+
+                  <details className="mt-1">
+                    <summary className="cursor-pointer text-stone-400 dark:text-zinc-500 hover:text-stone-600 dark:hover:text-zinc-300 transition-colors">Manual terminal option</summary>
+                    <div className="mt-1.5 space-y-1.5 pl-2 border-l-2 border-stone-200 dark:border-zinc-700">
+                      <p>If you prefer to run Ollama manually, stop the background service first, then:</p>
+                      <p className="font-medium text-stone-600 dark:text-zinc-300">macOS / Linux:</p>
+                      <pre className="bg-stone-100 dark:bg-zinc-800 rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto">OLLAMA_ORIGINS=* ollama serve</pre>
+                      <p className="font-medium text-stone-600 dark:text-zinc-300">Windows (PowerShell):</p>
+                      <pre className="bg-stone-100 dark:bg-zinc-800 rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto">$env:OLLAMA_ORIGINS=&quot;*&quot;; ollama serve</pre>
+                    </div>
+                  </details>
                 </div>
               )}
             </div>

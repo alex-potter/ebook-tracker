@@ -1,30 +1,35 @@
-# Chapter Companion
+# BookBuddy
 
-> Track characters as you read an ebook — spoiler-free.
+> Track characters as you read — spoiler-free.
 
-Upload any EPUB, tell the app which chapter you're on, and Claude analyzes **only the text you've already read** to give you a spoiler-safe character dashboard.
+[![MIT License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![GitHub Pages](https://img.shields.io/badge/demo-live-blue)](https://alex-potter.github.io/bookbuddy/)
+[![PWA](https://img.shields.io/badge/PWA-ready-orange)]()
 
-## Setup
+<img src="docs/screenshots/hero.png" alt="BookBuddy dashboard showing character cards, chapter sidebar, and analysis results" width="100%" />
 
-1. **Install Node.js** — https://nodejs.org (LTS version)
+## Try it now
 
-2. **Install dependencies**
-   ```bash
-   cd ebook-tracker
-   npm install
-   ```
+**[Launch BookBuddy](https://alex-potter.github.io/bookbuddy/)** — no install needed. Runs entirely in your browser.
 
-3. **Add your Anthropic API key** — edit `.env.local`:
-   ```
-   ANTHROPIC_API_KEY=sk-ant-...
-   ```
+## What it does
 
-4. **Start the dev server**
-   ```bash
-   npm run dev
-   ```
+Upload any EPUB, pick your chapter, and AI analyzes **only what you've read** to give you a spoiler-safe dashboard.
 
-5. Open http://localhost:3000
+- **Characters** — status, location, relationships, recent events
+- **Locations** — where things happen in the story
+- **Map** — locations pinned on an interactive map
+- **Story arcs** — plotlines tracked chapter by chapter
+- **Chat** — ask spoiler-free questions about the book
+
+<p>
+  <img src="docs/screenshots/characters.png" alt="Characters tab showing cards with status indicators" width="49%" />
+  <img src="docs/screenshots/locations.png" alt="Locations tab with location entries" width="49%" />
+</p>
+<p>
+  <img src="docs/screenshots/map.png" alt="Map tab with pinned locations" width="49%" />
+  <img src="docs/screenshots/arcs.png" alt="Arcs tab with narrative arc timelines" width="49%" />
+</p>
 
 ## How it works
 
@@ -43,7 +48,42 @@ Upload any EPUB, tell the app which chapter you're on, and Claude analyzes **onl
 - If a book is recognized, Claude is instructed to ignore what it knows
 - Chapters beyond your current position are grayed out and unselectable
 
-## Project structure
+## AI providers
+
+Works with **Ollama** (free, local) or the **Anthropic API** (Claude). Configure in Settings.
+
+<details>
+<summary><strong>Developer setup</strong></summary>
+
+1. **Clone the repo**
+   ```bash
+   git clone https://github.com/alex-potter/bookbuddy.git
+   cd bookbuddy
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Add your API key** (optional — Ollama works without one)
+
+   Create `.env.local`:
+   ```
+   ANTHROPIC_API_KEY=sk-ant-...
+   ```
+
+4. **Start the dev server**
+   ```bash
+   npm run dev
+   ```
+
+5. Open http://localhost:3000
+
+</details>
+
+<details>
+<summary><strong>Project structure</strong></summary>
 
 ```
 app/
@@ -60,13 +100,8 @@ types/
   index.ts              — TypeScript interfaces
 ```
 
-## Character card fields
+</details>
 
-Each card shows:
-- **Status** — Alive / Dead / Unknown / Uncertain (with colored indicator)
-- **Importance** — Main / Secondary / Minor
-- **Current location** — Last known whereabouts
-- **Description** — Who they are, as established so far
-- **Recent events** — What's happened to them lately
-- **Relationships** — Who they know and how (expandable)
-- **Last seen** — Which chapter they most recently appeared in
+## License
+
+[MIT](LICENSE)
