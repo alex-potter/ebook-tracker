@@ -64,9 +64,11 @@ interface Props {
   currentResult?: AnalysisResult;
   onResultEdit?: (r: AnalysisResult, propagate?: SnapshotTransform) => void;
   onClose: () => void;
+  currentChapterIndex?: number;
+  onEntityClick?: (type: 'character' | 'location' | 'arc', name: string) => void;
 }
 
-export default function NarrativeArcModal({ arcName, snapshots, chapterTitles, currentResult, onResultEdit, onClose }: Props) {
+export default function NarrativeArcModal({ arcName, snapshots, chapterTitles, currentResult, onResultEdit, onClose, currentChapterIndex, onEntityClick }: Props) {
   const [tab, setTab] = useState<'overview' | 'timeline'>('overview');
   const [mode, setMode] = useState<EditMode>('view');
 
@@ -118,6 +120,7 @@ export default function NarrativeArcModal({ arcName, snapshots, chapterTitles, c
   interface TimelineEntry { chapterIndex: number; summary: string; status: string; charCount: number; }
   const timeline: TimelineEntry[] = [];
   for (const snap of sorted) {
+    if (currentChapterIndex != null && snap.index > currentChapterIndex) break;
     const arc = snap.result.arcs?.find((a) => a.name?.toLowerCase().trim() === arcName.toLowerCase().trim());
     if (arc?.summary) {
       timeline.push({ chapterIndex: snap.index, summary: arc.summary, status: arc.status ?? 'active', charCount: arc.characters?.length ?? 0 });
@@ -137,6 +140,22 @@ export default function NarrativeArcModal({ arcName, snapshots, chapterTitles, c
     if (!currentResult || !onResultEdit) return;
     const oldName = arcName;
     const newName = draft.name.trim();
+
+    // Auto-merge: if newName matches another arc's primary name, merge instead of rename
+    if (oldName !== newName) {
+      const arcs = currentResult.arcs ?? [];
+      const target = arcs.find(
+        (a) => a.name.toLowerCase().trim() !== oldName.toLowerCase().trim()
+             && a.name.toLowerCase().trim() === newName.toLowerCase(),
+      );
+      if (target) {
+        const transform = mergeArcs(target.name, oldName);
+        onResultEdit(transform(currentResult), transform);
+        onClose();
+        return;
+      }
+    }
+
     const newChars = draft.characters.split(',').map((s) => s.trim()).filter(Boolean);
 
     const arcs = (currentResult.arcs ?? []).map((a) => {
@@ -442,7 +461,11 @@ export default function NarrativeArcModal({ arcName, snapshots, chapterTitles, c
                             <div className={`flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold ${nameColor(name)}`}>
                               {initials(name)}
                             </div>
-                            <span className="text-sm text-stone-800 dark:text-zinc-200">{name}</span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onEntityClick?.('character', name); }}
+                              className={`text-sm text-stone-800 dark:text-zinc-200 ${onEntityClick ? 'hover:underline cursor-pointer' : ''}`}
+                              disabled={!onEntityClick}
+                            >{name}</button>
                             <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ml-auto ${CHAR_STATUS_DOT[charStatus] ?? CHAR_STATUS_DOT.unknown}`} title={charStatus} />
                           </li>
                         );
@@ -459,7 +482,11 @@ export default function NarrativeArcModal({ arcName, snapshots, chapterTitles, c
                         <li key={name} className="flex items-start gap-2">
                           <span className="text-stone-400 dark:text-zinc-600 mt-0.5 flex-shrink-0">📍</span>
                           <div>
-                            <p className="text-sm font-medium text-stone-800 dark:text-zinc-200">{name}</p>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onEntityClick?.('location', name); }}
+                              className={`text-sm font-medium text-stone-800 dark:text-zinc-200 text-left ${onEntityClick ? 'hover:underline cursor-pointer' : ''}`}
+                              disabled={!onEntityClick}
+                            >{name}</button>
                             {desc && <p className="text-xs text-stone-400 dark:text-zinc-500 mt-0.5 leading-relaxed">{desc}</p>}
                           </div>
                         </li>

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { AnalysisResult, Character, Snapshot } from '@/types';
 import type { SnapshotTransform } from '@/lib/propagate-edit';
 import CharacterModal from './CharacterModal';
+import LocationModal from './LocationModal';
 
 const STATUS_CONFIG = {
   alive:     { label: 'Alive',     color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', dot: 'bg-emerald-400' },
@@ -44,17 +45,35 @@ interface Props {
   chapterTitles?: string[];
   currentResult?: AnalysisResult;
   onResultEdit?: (result: AnalysisResult, propagate?: SnapshotTransform) => void;
+  currentChapterIndex?: number;
 }
 
-export default function CharacterCard({ character, snapshots, chapterTitles, currentResult, onResultEdit }: Props) {
+export default function CharacterCard({ character, snapshots, chapterTitles, currentResult, onResultEdit, currentChapterIndex }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [navEntity, setNavEntity] = useState<{ type: 'character' | 'location'; name: string } | null>(null);
+
+  const handleEntityClick = (type: 'character' | 'location' | 'arc', name: string) => {
+    if (type === 'character' || type === 'location') {
+      setModalOpen(false);
+      setNavEntity({ type, name });
+    }
+  };
   const status = STATUS_CONFIG[character.status] ?? STATUS_CONFIG.unknown;
   const importance = IMPORTANCE_CONFIG[character.importance] ?? IMPORTANCE_CONFIG.minor;
 
   return (
     <>
-      {modalOpen && <CharacterModal character={character} snapshots={snapshots} chapterTitles={chapterTitles} currentResult={currentResult} onResultEdit={onResultEdit} onClose={() => setModalOpen(false)} />}
+      {modalOpen && <CharacterModal character={character} snapshots={snapshots} chapterTitles={chapterTitles} currentResult={currentResult} onResultEdit={onResultEdit} currentChapterIndex={currentChapterIndex} onClose={() => setModalOpen(false)} onEntityClick={handleEntityClick} />}
+      {navEntity?.type === 'character' && (() => {
+        const navChar = currentResult?.characters.find((c) => c.name === navEntity.name);
+        return navChar ? (
+          <CharacterModal character={navChar} snapshots={snapshots} chapterTitles={chapterTitles} currentResult={currentResult} onResultEdit={onResultEdit} currentChapterIndex={currentChapterIndex} onClose={() => setNavEntity(null)} onEntityClick={handleEntityClick} />
+        ) : null;
+      })()}
+      {navEntity?.type === 'location' && (
+        <LocationModal locationName={navEntity.name} snapshots={snapshots ?? []} chapterTitles={chapterTitles} currentResult={currentResult} onResultEdit={onResultEdit} currentChapterIndex={currentChapterIndex} onClose={() => setNavEntity(null)} onEntityClick={handleEntityClick} />
+      )}
     <div
       onClick={() => setModalOpen(true)}
       className={`
@@ -128,7 +147,13 @@ export default function CharacterCard({ character, snapshots, chapterTitles, cur
                     {initials(rel.character)}
                   </span>
                   <div>
-                    <span className="font-medium text-stone-700 dark:text-zinc-300">{rel.character}</span>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); handleEntityClick('character', rel.character); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); handleEntityClick('character', rel.character); } }}
+                      className="font-medium text-stone-700 dark:text-zinc-300 hover:underline cursor-pointer"
+                    >{rel.character}</span>
                     <span className="text-stone-400 dark:text-zinc-500 ml-1">— {rel.relationship}</span>
                   </div>
                 </li>

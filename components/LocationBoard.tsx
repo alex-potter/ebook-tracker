@@ -51,6 +51,7 @@ interface Props {
   resolvedCharacters?: Character[];
   locationAliasMap?: Map<string, string>;
   locationGroups?: LocationGroup[];
+  currentChapterIndex?: number;
 }
 
 /** Build a per-location timeline from snapshot history */
@@ -121,12 +122,17 @@ function hasAnyHierarchy(locations: LocationInfo[]): boolean {
   return locations.some((l) => !!l.parentLocation);
 }
 
-export default function LocationBoard({ characters, locations, bookTitle, snapshots = [], chapterTitles, locationImage, locationLabel = '', currentResult, onResultEdit, onLocationImageChange, resolvedCharacters: resolvedCharsProp, locationAliasMap: aliasMapProp, locationGroups: groupsProp }: Props) {
+export default function LocationBoard({ characters, locations, bookTitle, snapshots = [], chapterTitles, locationImage, locationLabel = '', currentResult, onResultEdit, onLocationImageChange, resolvedCharacters: resolvedCharsProp, locationAliasMap: aliasMapProp, locationGroups: groupsProp, currentChapterIndex }: Props) {
   const [view, setView] = useState<'list' | 'graph'>('list');
   const [search, setSearch] = useState('');
   const [expandedLocation, setExpandedLocation] = useState<string | null>(null);
   const [selectedCharName, setSelectedCharName] = useState<string | null>(null);
   const [selectedLocationName, setSelectedLocationName] = useState<string | null>(null);
+
+  const handleEntityClick = (type: 'character' | 'location' | 'arc', name: string) => {
+    setSelectedCharName(type === 'character' ? name : null);
+    setSelectedLocationName(type === 'location' ? name : null);
+  };
   const [collapsedLocations, setCollapsedLocations] = useState<Set<string>>(new Set());
   const [showOnlyRoots, setShowOnlyRoots] = useState(false);
   const mapImage = locationImage ?? null;
@@ -200,10 +206,10 @@ export default function LocationBoard({ characters, locations, bookTitle, snapsh
   return (
     <div className="space-y-4">
       {selectedChar && (
-        <CharacterModal character={selectedChar} snapshots={snapshots} currentResult={currentResult} onResultEdit={onResultEdit} onClose={() => setSelectedCharName(null)} />
+        <CharacterModal character={selectedChar} snapshots={snapshots} currentResult={currentResult} onResultEdit={onResultEdit} currentChapterIndex={currentChapterIndex} onClose={() => setSelectedCharName(null)} onEntityClick={handleEntityClick} />
       )}
       {selectedLocationName && (
-        <LocationModal locationName={selectedLocationName} snapshots={snapshots} chapterTitles={chapterTitles} currentResult={currentResult} onResultEdit={onResultEdit} onClose={() => setSelectedLocationName(null)} />
+        <LocationModal locationName={selectedLocationName} snapshots={snapshots} chapterTitles={chapterTitles} currentResult={currentResult} onResultEdit={onResultEdit} currentChapterIndex={currentChapterIndex} onClose={() => setSelectedLocationName(null)} onEntityClick={handleEntityClick} />
       )}
       {/* View toggle */}
       <div className="flex gap-1 bg-stone-100/50 dark:bg-zinc-800/50 rounded-lg p-0.5 w-fit border border-stone-200 dark:border-zinc-800">

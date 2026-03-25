@@ -69,9 +69,11 @@ interface Props {
   currentResult?: AnalysisResult;
   onResultEdit?: (r: AnalysisResult, propagate?: SnapshotTransform, pinUpdates?: PinUpdates) => void;
   onClose: () => void;
+  currentChapterIndex?: number;
+  onEntityClick?: (type: 'character' | 'location' | 'arc', name: string) => void;
 }
 
-export default function LocationModal({ locationName, snapshots, chapterTitles, currentResult, onResultEdit, onClose }: Props) {
+export default function LocationModal({ locationName, snapshots, chapterTitles, currentResult, onResultEdit, onClose, currentChapterIndex, onEntityClick }: Props) {
   const [tab, setTab] = useState<'overview' | 'timeline'>('overview');
   const [mode, setMode] = useState<EditMode>('view');
 
@@ -127,6 +129,7 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
   const timeline: TimelineEntry[] = [];
   let prevCharNames = new Set<string>();
   for (const snap of sorted) {
+    if (currentChapterIndex != null && snap.index > currentChapterIndex) break;
     const locInfo = snap.result.locations?.find(
       (l) => l.name?.toLowerCase().trim() === locationName.toLowerCase().trim(),
     );
@@ -159,6 +162,22 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
     if (!currentResult || !onResultEdit) return;
     const oldName = locationName;
     const newName = draft.name.trim();
+
+    // Auto-merge: if newName matches another location's primary name, merge instead of rename
+    if (oldName !== newName) {
+      const locs = currentResult.locations ?? [];
+      const target = locs.find(
+        (l) => l.name.toLowerCase() !== oldName.toLowerCase().trim()
+             && l.name.toLowerCase() === newName.toLowerCase(),
+      );
+      if (target) {
+        const transform = mergeLocations(target.name, oldName);
+        onResultEdit(transform(currentResult), transform, { renames: { [oldName]: target.name } });
+        onClose();
+        return;
+      }
+    }
+
     const newAliases = draft.aliases.split(',').map((s) => s.trim()).filter(Boolean);
     const newParent = draft.parentLocation.trim() || undefined;
     const oldParent = currentLoc?.parentLocation;
@@ -537,7 +556,11 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
                           </div>
                           <div className="flex-1 min-w-0 pt-0.5">
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-stone-800 dark:text-zinc-200">{c.name}</span>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onEntityClick?.('character', c.name); }}
+                                className={`text-sm font-medium text-stone-800 dark:text-zinc-200 ${onEntityClick ? 'hover:underline cursor-pointer' : ''}`}
+                                disabled={!onEntityClick}
+                              >{c.name}</button>
                               <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${STATUS_DOT[c.status] ?? STATUS_DOT.unknown}`} />
                             </div>
                             {c.recentEvents && (
@@ -557,7 +580,11 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
                       {relationships.map((r) => (
                         <li key={r.location} className="flex items-center gap-2 text-sm">
                           <span className="text-xs px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400 border border-violet-500/20 flex-shrink-0">{r.relationship}</span>
-                          <span className="text-stone-700 dark:text-zinc-300">{r.location}</span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onEntityClick?.('location', r.location); }}
+                            className={`text-stone-700 dark:text-zinc-300 ${onEntityClick ? 'hover:underline cursor-pointer' : ''}`}
+                            disabled={!onEntityClick}
+                          >{r.location}</button>
                         </li>
                       ))}
                     </ul>
@@ -586,10 +613,15 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
                         )}
                         <div className="flex flex-wrap gap-1.5">
                           {entry.characters.map((c) => (
-                            <span key={c.name} className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md font-medium ${nameColor(c.name)}`}>
+                            <button
+                              key={c.name}
+                              onClick={(e) => { e.stopPropagation(); onEntityClick?.('character', c.name); }}
+                              className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md font-medium ${nameColor(c.name)} ${onEntityClick ? 'hover:brightness-125 transition-all cursor-pointer' : ''}`}
+                              disabled={!onEntityClick}
+                            >
                               <span className={`w-1 h-1 rounded-full flex-shrink-0 ${STATUS_DOT[c.status] ?? STATUS_DOT.unknown}`} />
                               {c.name}
-                            </span>
+                            </button>
                           ))}
                         </div>
                       </li>

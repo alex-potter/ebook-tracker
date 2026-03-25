@@ -110,9 +110,11 @@ interface Props {
   currentResult?: AnalysisResult;
   onResultEdit?: (r: AnalysisResult, propagate?: SnapshotTransform) => void;
   onClose: () => void;
+  currentChapterIndex?: number;
+  onEntityClick?: (type: 'character' | 'location' | 'arc', name: string) => void;
 }
 
-export default function CharacterModal({ character, snapshots, chapterTitles, currentResult, onResultEdit, onClose }: Props) {
+export default function CharacterModal({ character, snapshots, chapterTitles, currentResult, onResultEdit, onClose, currentChapterIndex, onEntityClick }: Props) {
   const [tab, setTab] = useState<'overview' | 'timeline'>('overview');
   const [mode, setMode] = useState<EditMode>('view');
   const [draft, setDraft] = useState<DraftCharacter>(() => charToDraft(character));
@@ -128,7 +130,8 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
     if (!snapshots?.length) return [];
     const entries: TimelineEntry[] = [];
     let lastEvents = '';
-    const sorted = [...snapshots].sort((a, b) => a.index - b.index);
+    const sorted = [...snapshots].sort((a, b) => a.index - b.index)
+      .filter((s) => currentChapterIndex == null || s.index <= currentChapterIndex);
     const charNameSet = new Set(
       [character.name, ...(character.aliases ?? [])].map((n) => n.toLowerCase().trim()).filter(Boolean),
     );
@@ -166,6 +169,20 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
     const updated = draftToChar(draft, character);
     const oldName = character.name;
     const newName = updated.name;
+
+    // Auto-merge: if newName matches another character's primary name, merge instead of rename
+    if (oldName !== newName) {
+      const target = currentResult.characters.find(
+        (c) => c.name !== oldName && c.name.toLowerCase() === newName.toLowerCase().trim(),
+      );
+      if (target) {
+        const transform = mergeCharacters(target.name, oldName);
+        onResultEdit(transform(currentResult), transform);
+        onClose();
+        return;
+      }
+    }
+
     const nameMap = new Map<string, string>();
     if (oldName !== newName) nameMap.set(oldName.toLowerCase(), newName);
 
@@ -598,7 +615,11 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
                             {initials(rel.character)}
                           </div>
                           <div className="flex-1 min-w-0 pt-0.5">
-                            <span className="text-sm font-medium text-stone-800 dark:text-zinc-200">{rel.character}</span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onEntityClick?.('character', rel.character); }}
+                              className={`text-sm font-medium text-stone-800 dark:text-zinc-200 ${onEntityClick ? 'hover:underline cursor-pointer' : ''}`}
+                              disabled={!onEntityClick}
+                            >{rel.character}</button>
                             <span className="text-sm text-stone-400 dark:text-zinc-500"> — {rel.relationship}</span>
                           </div>
                         </li>
@@ -625,15 +646,24 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
                           Ch. {entry.chapterIndex + 1} — {entry.chapterTitle}
                         </p>
                         {entry.location && entry.location !== 'Unknown' && (
-                          <p className="text-[11px] text-stone-400 dark:text-zinc-600 mb-1">📍 {entry.location}</p>
+                          <p className="text-[11px] text-stone-400 dark:text-zinc-600 mb-1">📍 <button
+                            onClick={(e) => { e.stopPropagation(); onEntityClick?.('location', entry.location!); }}
+                            className={onEntityClick ? 'hover:underline cursor-pointer' : ''}
+                            disabled={!onEntityClick}
+                          >{entry.location}</button></p>
                         )}
                         {entry.interactions.length > 0 && (
                           <div className="flex flex-wrap gap-1 mb-2">
                             {entry.interactions.map((name) => (
-                              <span key={name} className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md font-medium ${nameColor(name)}`}>
+                              <button
+                                key={name}
+                                onClick={(e) => { e.stopPropagation(); onEntityClick?.('character', name); }}
+                                className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md font-medium ${nameColor(name)} ${onEntityClick ? 'hover:brightness-125 transition-all cursor-pointer' : ''}`}
+                                disabled={!onEntityClick}
+                              >
                                 <span className="opacity-60">{initials(name)}</span>
                                 {name}
-                              </span>
+                              </button>
                             ))}
                           </div>
                         )}

@@ -25,7 +25,7 @@ export default function StoryTimeline({ snapshots, chapterTitles, currentIndex, 
 
   // Filter to snapshots that have a summary
   const entries = snapshots
-    .filter((s) => s.result.summary)
+    .filter((s) => s.result.summary && s.index <= currentIndex)
     .sort((a, b) => a.index - b.index);
 
   // Close on Escape
@@ -34,6 +34,12 @@ export default function StoryTimeline({ snapshots, chapterTitles, currentIndex, 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
+
+  const handleEntityClick = (type: 'character' | 'location' | 'arc', name: string) => {
+    setSelectedCharacter(type === 'character' ? name : null);
+    setSelectedLocation(type === 'location' ? name : null);
+    setSelectedArc(type === 'arc' ? name : null);
+  };
 
   // Scroll current chapter into view on mount
   useEffect(() => {
@@ -191,7 +197,11 @@ export default function StoryTimeline({ snapshots, chapterTitles, currentIndex, 
 
       {/* Sub-modals for entity details */}
       {selectedCharacter && currentResult && (() => {
-        const character = currentResult.characters.find((c) => c.name === selectedCharacter);
+        const lower = selectedCharacter.toLowerCase();
+        const character = currentResult.characters.find((c) => c.name === selectedCharacter)
+          ?? currentResult.characters.find((c) => c.name.toLowerCase() === lower)
+          ?? currentResult.characters.find((c) =>
+               c.aliases.some((a) => a.toLowerCase() === lower));
         return character ? (
           <CharacterModal
             character={character}
@@ -199,7 +209,9 @@ export default function StoryTimeline({ snapshots, chapterTitles, currentIndex, 
             chapterTitles={chapterTitles}
             currentResult={currentResult}
             onResultEdit={onResultEdit}
+            currentChapterIndex={currentIndex}
             onClose={() => setSelectedCharacter(null)}
+            onEntityClick={handleEntityClick}
           />
         ) : null;
       })()}
@@ -210,7 +222,9 @@ export default function StoryTimeline({ snapshots, chapterTitles, currentIndex, 
           chapterTitles={chapterTitles}
           currentResult={currentResult}
           onResultEdit={onResultEdit}
+          currentChapterIndex={currentIndex}
           onClose={() => setSelectedArc(null)}
+          onEntityClick={handleEntityClick}
         />
       )}
       {selectedLocation && (
@@ -220,7 +234,9 @@ export default function StoryTimeline({ snapshots, chapterTitles, currentIndex, 
           chapterTitles={chapterTitles}
           currentResult={currentResult}
           onResultEdit={onResultEdit}
+          currentChapterIndex={currentIndex}
           onClose={() => setSelectedLocation(null)}
+          onEntityClick={handleEntityClick}
         />
       )}
     </div>

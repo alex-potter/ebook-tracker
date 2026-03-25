@@ -4,6 +4,8 @@ import { useState } from 'react';
 import type { AnalysisResult, NarrativeArc, Snapshot } from '@/types';
 import type { SnapshotTransform } from '@/lib/propagate-edit';
 import NarrativeArcModal from '@/components/NarrativeArcModal';
+import CharacterModal from '@/components/CharacterModal';
+import LocationModal from '@/components/LocationModal';
 
 interface Props {
   arcs: NarrativeArc[];
@@ -12,6 +14,7 @@ interface Props {
   currentResult?: AnalysisResult;
   onResultEdit?: (result: AnalysisResult, propagate?: SnapshotTransform) => void;
   arcChapterMap?: Map<string, number[]>;
+  currentChapterIndex?: number;
 }
 
 const STATUS_CONFIG = {
@@ -20,8 +23,16 @@ const STATUS_CONFIG = {
   resolved: { label: 'Resolved', dot: 'bg-emerald-500', badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' },
 };
 
-export default function ArcsPanel({ arcs, snapshots, chapterTitles, currentResult, onResultEdit, arcChapterMap: arcChapterMapProp }: Props) {
+export default function ArcsPanel({ arcs, snapshots, chapterTitles, currentResult, onResultEdit, arcChapterMap: arcChapterMapProp, currentChapterIndex }: Props) {
   const [selectedArc, setSelectedArc] = useState<string | null>(null);
+  const [selectedCharName, setSelectedCharName] = useState<string | null>(null);
+  const [selectedLocationName, setSelectedLocationName] = useState<string | null>(null);
+
+  const handleEntityClick = (type: 'character' | 'location' | 'arc', name: string) => {
+    setSelectedArc(type === 'arc' ? name : null);
+    setSelectedCharName(type === 'character' ? name : null);
+    setSelectedLocationName(type === 'location' ? name : null);
+  };
   if (arcs.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
@@ -64,7 +75,36 @@ export default function ArcsPanel({ arcs, snapshots, chapterTitles, currentResul
         chapterTitles={chapterTitles}
         currentResult={currentResult}
         onResultEdit={onResultEdit}
+        currentChapterIndex={currentChapterIndex}
         onClose={() => setSelectedArc(null)}
+        onEntityClick={handleEntityClick}
+      />
+    )}
+    {selectedCharName && (() => {
+      const character = currentResult?.characters.find((c) => c.name === selectedCharName);
+      return character ? (
+        <CharacterModal
+          character={character}
+          snapshots={snapshots}
+          chapterTitles={chapterTitles}
+          currentResult={currentResult}
+          onResultEdit={onResultEdit}
+          currentChapterIndex={currentChapterIndex}
+          onClose={() => setSelectedCharName(null)}
+          onEntityClick={handleEntityClick}
+        />
+      ) : null;
+    })()}
+    {selectedLocationName && (
+      <LocationModal
+        locationName={selectedLocationName}
+        snapshots={snapshots}
+        chapterTitles={chapterTitles}
+        currentResult={currentResult}
+        onResultEdit={onResultEdit}
+        currentChapterIndex={currentChapterIndex}
+        onClose={() => setSelectedLocationName(null)}
+        onEntityClick={handleEntityClick}
       />
     )}
     <div className="space-y-4">
@@ -100,7 +140,11 @@ export default function ArcsPanel({ arcs, snapshots, chapterTitles, currentResul
                 {arc.characters.map((name) => (
                   <span
                     key={name}
-                    className="text-[11px] px-2 py-0.5 rounded-full bg-stone-100 dark:bg-zinc-800 text-stone-500 dark:text-zinc-400 border border-stone-200 dark:border-zinc-700"
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => { e.stopPropagation(); handleEntityClick('character', name); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); handleEntityClick('character', name); } }}
+                    className="text-[11px] px-2 py-0.5 rounded-full bg-stone-100 dark:bg-zinc-800 text-stone-500 dark:text-zinc-400 border border-stone-200 dark:border-zinc-700 hover:underline cursor-pointer"
                   >
                     {name}
                   </span>

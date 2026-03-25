@@ -24,6 +24,7 @@ interface Props {
   aggregated?: { characters: AggregatedCharacter[]; locations: AggregatedLocation[]; arcs: AggregatedArc[] };
   bookTitle: string;
   bookAuthor: string;
+  currentChapterIndex?: number;
 }
 
 function chapterRange(first: number, last: number, titles: string[]): string {
@@ -44,7 +45,7 @@ const phaseLabels: Record<string, string> = {
   parsing: 'Processing results\u2026',
 };
 
-export default function EntityManager({ snapshots, currentResult, chapterTitles, onResultEdit, aggregated: aggregatedProp, bookTitle, bookAuthor }: Props) {
+export default function EntityManager({ snapshots, currentResult, chapterTitles, onResultEdit, aggregated: aggregatedProp, bookTitle, bookAuthor, currentChapterIndex }: Props) {
   const [entityTab, setEntityTab] = useState<EntityTab>('characters');
   const [search, setSearch] = useState('');
   const [showHistorical, setShowHistorical] = useState(true);
@@ -75,6 +76,12 @@ export default function EntityManager({ snapshots, currentResult, chapterTitles,
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
+
+  const handleEntityClick = (type: 'character' | 'location' | 'arc', name: string) => {
+    const tabMap = { character: 'characters', location: 'locations', arc: 'arcs' } as const;
+    setEntityTab(tabMap[type]);
+    setSelectedEntity(name);
+  };
 
   const aggregated = aggregatedProp ?? aggregateEntities(snapshots, currentResult);
 
@@ -684,41 +691,57 @@ export default function EntityManager({ snapshots, currentResult, chapterTitles,
         </div>
       )}
 
-      {/* Current entity modals */}
+      {/* Entity modals — fall back to aggregated data for historical-only entities */}
       {selectedEntity && entityTab === 'characters' && (() => {
-        const char = currentResult.characters.find((c) => c.name === selectedEntity);
+        let char = currentResult.characters.find((c) => c.name === selectedEntity);
+        const inCurrent = !!char;
+        if (!char) {
+          char = aggregated.characters.find((e) => e.character.name === selectedEntity)?.character;
+        }
         if (!char) return null;
         return (
           <CharacterModal
             character={char}
             snapshots={snapshots}
             chapterTitles={chapterTitles}
-            currentResult={currentResult}
-            onResultEdit={onResultEdit}
+            currentResult={inCurrent ? currentResult : undefined}
+            onResultEdit={inCurrent ? onResultEdit : undefined}
+            currentChapterIndex={currentChapterIndex}
             onClose={() => setSelectedEntity(null)}
+            onEntityClick={handleEntityClick}
           />
         );
       })()}
-      {selectedEntity && entityTab === 'locations' && (
-        <LocationModal
-          locationName={selectedEntity}
-          snapshots={snapshots}
-          chapterTitles={chapterTitles}
-          currentResult={currentResult}
-          onResultEdit={onResultEdit}
-          onClose={() => setSelectedEntity(null)}
-        />
-      )}
-      {selectedEntity && entityTab === 'arcs' && (
-        <NarrativeArcModal
-          arcName={selectedEntity}
-          snapshots={snapshots}
-          chapterTitles={chapterTitles}
-          currentResult={currentResult}
-          onResultEdit={onResultEdit}
-          onClose={() => setSelectedEntity(null)}
-        />
-      )}
+      {selectedEntity && entityTab === 'locations' && (() => {
+        const inCurrent = currentResult.locations?.some((l) => l.name === selectedEntity);
+        return (
+          <LocationModal
+            locationName={selectedEntity}
+            snapshots={snapshots}
+            chapterTitles={chapterTitles}
+            currentResult={inCurrent ? currentResult : undefined}
+            onResultEdit={inCurrent ? onResultEdit : undefined}
+            currentChapterIndex={currentChapterIndex}
+            onClose={() => setSelectedEntity(null)}
+            onEntityClick={handleEntityClick}
+          />
+        );
+      })()}
+      {selectedEntity && entityTab === 'arcs' && (() => {
+        const inCurrent = currentResult.arcs?.some((a) => a.name === selectedEntity);
+        return (
+          <NarrativeArcModal
+            arcName={selectedEntity}
+            snapshots={snapshots}
+            chapterTitles={chapterTitles}
+            currentResult={inCurrent ? currentResult : undefined}
+            onResultEdit={inCurrent ? onResultEdit : undefined}
+            currentChapterIndex={currentChapterIndex}
+            onClose={() => setSelectedEntity(null)}
+            onEntityClick={handleEntityClick}
+          />
+        );
+      })()}
 
       {/* Merge picker for historical entities */}
       {mergeTarget && (
@@ -795,7 +818,7 @@ function CharacterRow({ entry, chapterTitles, isExpanded, isSelected, onToggleSe
   return (
     <div>
       <button
-        onClick={isCurrent ? onClickCurrent : onClickHistorical}
+        onClick={onClickCurrent}
         className="w-full text-left px-3 py-2 rounded-lg hover:bg-stone-100 dark:hover:bg-zinc-800/60 transition-colors flex items-center gap-3"
       >
         <input
@@ -815,6 +838,13 @@ function CharacterRow({ entry, chapterTitles, isExpanded, isSelected, onToggleSe
           <span className="text-[10px] text-stone-400 dark:text-zinc-500 capitalize">{c.importance}</span>
           <span className={`text-[10px] capitalize ${c.status === 'alive' ? 'text-emerald-500' : c.status === 'dead' ? 'text-red-400' : 'text-stone-400 dark:text-zinc-500'}`}>{c.status}</span>
           <Badge isCurrent={isCurrent} first={firstSeenIndex} last={lastSeenIndex} titles={chapterTitles} />
+          {!isCurrent && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onClickHistorical(); }}
+              className="text-xs px-1 py-0.5 rounded text-stone-400 dark:text-zinc-500 hover:bg-stone-200 dark:hover:bg-zinc-700 transition-colors"
+              title="Actions"
+            >⋯</button>
+          )}
         </div>
       </button>
       {!isCurrent && <HistoricalActions isExpanded={isExpanded} onMerge={onMerge} onDelete={onDelete} />}
@@ -827,7 +857,7 @@ function LocationRow({ entry, chapterTitles, isExpanded, isSelected, onToggleSel
   return (
     <div>
       <button
-        onClick={isCurrent ? onClickCurrent : onClickHistorical}
+        onClick={onClickCurrent}
         className="w-full text-left px-3 py-2 rounded-lg hover:bg-stone-100 dark:hover:bg-zinc-800/60 transition-colors flex items-center gap-3"
       >
         <input
@@ -846,6 +876,13 @@ function LocationRow({ entry, chapterTitles, isExpanded, isSelected, onToggleSel
         <div className="flex items-center gap-2 flex-shrink-0">
           {l.arc && <span className="text-[10px] text-stone-400 dark:text-zinc-500">{l.arc}</span>}
           <Badge isCurrent={isCurrent} first={firstSeenIndex} last={lastSeenIndex} titles={chapterTitles} />
+          {!isCurrent && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onClickHistorical(); }}
+              className="text-xs px-1 py-0.5 rounded text-stone-400 dark:text-zinc-500 hover:bg-stone-200 dark:hover:bg-zinc-700 transition-colors"
+              title="Actions"
+            >⋯</button>
+          )}
         </div>
       </button>
       {!isCurrent && <HistoricalActions isExpanded={isExpanded} onMerge={onMerge} onDelete={onDelete} />}
@@ -859,7 +896,7 @@ function ArcRow({ entry, chapterTitles, isExpanded, isSelected, onToggleSelect, 
   return (
     <div>
       <button
-        onClick={isCurrent ? onClickCurrent : onClickHistorical}
+        onClick={onClickCurrent}
         className="w-full text-left px-3 py-2 rounded-lg hover:bg-stone-100 dark:hover:bg-zinc-800/60 transition-colors flex items-center gap-3"
       >
         <input
@@ -878,6 +915,13 @@ function ArcRow({ entry, chapterTitles, isExpanded, isSelected, onToggleSelect, 
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className={`text-[10px] capitalize ${statusColor}`}>{a.status}</span>
           <Badge isCurrent={isCurrent} first={firstSeenIndex} last={lastSeenIndex} titles={chapterTitles} />
+          {!isCurrent && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onClickHistorical(); }}
+              className="text-xs px-1 py-0.5 rounded text-stone-400 dark:text-zinc-500 hover:bg-stone-200 dark:hover:bg-zinc-700 transition-colors"
+              title="Actions"
+            >⋯</button>
+          )}
         </div>
       </button>
       {!isCurrent && <HistoricalActions isExpanded={isExpanded} onMerge={onMerge} onDelete={onDelete} />}

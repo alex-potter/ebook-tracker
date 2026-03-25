@@ -14,7 +14,7 @@ interface Props {
   onCancelRebuild: () => void;
   analyzing: boolean;
   rebuilding: boolean;
-  rebuildProgress: { current: number; total: number } | null;
+  rebuildProgress: { current: number; total: number; chapterTitle?: string; chapterIndex?: number } | null;
   lastAnalyzedIndex: number | null;
   snapshotIndices?: Set<number>;
   excludedBooks?: Set<number>;
@@ -26,6 +26,8 @@ interface Props {
   onProcessBook?: () => void;
   onDeleteSnapshot?: (chapterIndex: number) => void;
   metaOnly?: boolean;
+  needsSetup?: boolean;
+  onCompleteSetup?: (range: { start: number; end: number }) => void;
 }
 
 const BYTES_PER_LOCATION = 128;
@@ -54,7 +56,7 @@ interface ChapterItemProps {
   snapshotIndices?: Set<number>;
   isExcluded: boolean;
   rebuilding: boolean;
-  rebuildProgress: { current: number; total: number } | null;
+  rebuildProgress: { current: number; total: number; chapterTitle?: string; chapterIndex?: number } | null;
   mode: 'chapter' | 'location';
   chapters: EbookChapter[];
   onChange: (index: number) => void;
@@ -72,7 +74,7 @@ function ChapterItem({
   isExcluded, rebuilding, rebuildProgress, mode, chapters, onChange, setLocationInput, onToggleChapter, onDeleteSnapshot,
   isRangeStart, isRangeEnd, onSetRangeStart, onSetRangeEnd,
 }: ChapterItemProps) {
-  const isRebuildingThis = rebuilding && rebuildProgress && globalIndex === rebuildProgress.current - 1;
+  const isRebuildingThis = rebuilding && rebuildProgress && globalIndex === (rebuildProgress.chapterIndex ?? rebuildProgress.current - 1);
   const hasSnapshot = snapshotIndices?.has(globalIndex) ?? false;
   const isLastAnalyzed = lastAnalyzedIndex !== null && globalIndex === lastAnalyzedIndex;
   const isAnalyzed = lastAnalyzedIndex !== null && globalIndex < lastAnalyzedIndex;
@@ -339,6 +341,7 @@ export default function ChapterSelector({
   analyzing, rebuilding, rebuildProgress, lastAnalyzedIndex,
   snapshotIndices, excludedBooks, onToggleBook, excludedChapters, onToggleChapter,
   chapterRange, onSetRange, onProcessBook, onDeleteSnapshot, metaOnly,
+  needsSetup, onCompleteSetup,
 }: Props) {
   const [mode, setMode] = useState<'chapter' | 'location'>('chapter');
   const [locationInput, setLocationInput] = useState('');
@@ -412,6 +415,91 @@ export default function ChapterSelector({
     onSetRangeStart: onSetRange ? handleSetRangeStart : undefined,
     onSetRangeEnd: onSetRange ? handleSetRangeEnd : undefined,
   };
+
+  if (needsSetup && onCompleteSetup) {
+    const setupStart = chapterRange?.start ?? 0;
+    const setupEnd = chapterRange?.end ?? (chapters.length - 1);
+    return (
+      <div className="flex flex-col h-full">
+        <h2 className="text-sm font-semibold text-stone-800 dark:text-zinc-200 mb-1">Set up your book</h2>
+        <p className="text-xs text-stone-400 dark:text-zinc-500 mb-4">
+          Choose which chapters to analyze. Front &amp; back matter have been auto-detected — adjust if needed.
+        </p>
+
+        {/* Range summary */}
+        <div className="p-2.5 rounded-lg border border-amber-500/30 bg-amber-500/5 space-y-1.5 mb-4">
+          <p className="text-[10px] font-semibold text-amber-500 uppercase tracking-wider">Analysis range</p>
+          <div className="flex items-center gap-1.5 text-xs text-stone-500 dark:text-zinc-400">
+            <span className="text-amber-500 font-bold">Start:</span>
+            <span className="truncate flex-1 min-w-0">
+              {normalizeTitle(chapters[setupStart]?.title ?? '') || `Ch. ${setupStart + 1}`}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-stone-500 dark:text-zinc-400">
+            <span className="text-amber-500 font-bold">End:</span>
+            <span className="truncate flex-1 min-w-0">
+              {normalizeTitle(chapters[setupEnd]?.title ?? '') || `Ch. ${setupEnd + 1}`}
+            </span>
+          </div>
+        </div>
+
+        {/* Chapter list */}
+        <div className="flex-1 overflow-y-auto mb-4">
+          <ul className="space-y-0.5">
+            {chapters.map((ch, i) => {
+              const inRange = i >= setupStart && i <= setupEnd;
+              const isStart = i === setupStart;
+              const isEnd = i === setupEnd;
+              return (
+                <li key={ch.id} className={`flex items-center gap-1 rounded-md transition-colors ${
+                  isStart || isEnd ? 'bg-amber-500/10' : ''
+                }`}>
+                  <span className={`flex-1 text-xs px-2 py-1.5 truncate ${
+                    isStart || isEnd
+                      ? 'text-amber-500 font-semibold'
+                      : inRange
+                      ? 'text-stone-700 dark:text-zinc-300'
+                      : 'text-stone-300 dark:text-zinc-700'
+                  }`}>
+                    <span className="text-stone-400 dark:text-zinc-600 mr-1.5 tabular-nums text-[10px]">{i + 1}.</span>
+                    {normalizeTitle(ch.title)}
+                  </span>
+                  <button
+                    onClick={() => handleSetRangeStart(i)}
+                    className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                      isStart
+                        ? 'text-amber-500 bg-amber-500/20'
+                        : 'text-stone-400 dark:text-zinc-600 hover:text-amber-500 hover:bg-amber-500/10'
+                    }`}
+                  >
+                    Start
+                  </button>
+                  <button
+                    onClick={() => handleSetRangeEnd(i)}
+                    className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                      isEnd
+                        ? 'text-amber-500 bg-amber-500/20'
+                        : 'text-stone-400 dark:text-zinc-600 hover:text-amber-500 hover:bg-amber-500/10'
+                    }`}
+                  >
+                    End
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+
+        {/* Confirm button */}
+        <button
+          onClick={() => onCompleteSetup({ start: setupStart, end: setupEnd })}
+          className="w-full py-2.5 rounded-lg text-sm font-semibold bg-amber-500 text-zinc-900 hover:bg-amber-400 transition-colors"
+        >
+          Confirm &amp; Continue
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">

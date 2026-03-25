@@ -22,6 +22,7 @@ interface Props {
   resolvedCharacters?: Character[];
   locationAliasMap?: Map<string, string>;
   locationGroups?: LocationGroup[];
+  currentChapterIndex?: number;
 }
 
 const ARC_STATUS_DOT: Record<NarrativeArc['status'], string> = {
@@ -110,7 +111,7 @@ function charImportanceColor(importance: Character['importance']): string {
   return importance === 'main' ? '#f59e0b' : importance === 'secondary' ? '#3b82f6' : '#71717a';
 }
 
-export default function MapBoard({ characters, arcs = [], locationInfos = [], bookTitle, mapState, onMapStateChange, snapshots = [], currentResult, onResultEdit, resolvedCharacters: resolvedCharsProp, locationAliasMap: aliasMapProp, locationGroups: groupsProp }: Props) {
+export default function MapBoard({ characters, arcs = [], locationInfos = [], bookTitle, mapState, onMapStateChange, snapshots = [], currentResult, onResultEdit, resolvedCharacters: resolvedCharsProp, locationAliasMap: aliasMapProp, locationGroups: groupsProp, currentChapterIndex }: Props) {
   const [placingLocation, setPlacingLocation] = useState<string | null>(null);
   const [activePin, setActivePin] = useState<string | null>(null);
   const [activeCharPin, setActiveCharPin] = useState<string | null>(null);
@@ -127,6 +128,12 @@ export default function MapBoard({ characters, arcs = [], locationInfos = [], bo
   const [selectedCharName, setSelectedCharName] = useState<string | null>(null);
   const [selectedLocationName, setSelectedLocationName] = useState<string | null>(null);
   const [selectedArcName, setSelectedArcName] = useState<string | null>(null);
+
+  const handleEntityClick = (type: 'character' | 'location' | 'arc', name: string) => {
+    setSelectedCharName(type === 'character' ? name : null);
+    setSelectedLocationName(type === 'location' ? name : null);
+    setSelectedArcName(type === 'arc' ? name : null);
+  };
 
   // Auto-detect state
   const [detecting, setDetecting] = useState(false);
@@ -444,17 +451,22 @@ export default function MapBoard({ characters, arcs = [], locationInfos = [], bo
     const searchQuery = encodeURIComponent(`${bookTitle ?? ''} map`.trim());
     const searchUrl = `https://www.google.com/search?tbm=isch&q=${searchQuery}`;
 
-    const selectedChar = selectedCharName ? characters.find((c) => c.name === selectedCharName) : undefined;
+    const selectedChar = selectedCharName ? (() => {
+      const lower = selectedCharName.toLowerCase();
+      return characters.find((c) => c.name === selectedCharName)
+        ?? characters.find((c) => c.name.toLowerCase() === lower)
+        ?? characters.find((c) => c.aliases.some((a) => a.toLowerCase() === lower));
+    })() : undefined;
     return (
       <>
       {selectedChar && (
-        <CharacterModal character={selectedChar} snapshots={snapshots} currentResult={currentResult} onResultEdit={onResultEdit} onClose={() => setSelectedCharName(null)} />
+        <CharacterModal character={selectedChar} snapshots={snapshots} currentResult={currentResult} onResultEdit={onResultEdit} currentChapterIndex={currentChapterIndex} onClose={() => setSelectedCharName(null)} onEntityClick={handleEntityClick} />
       )}
       {selectedLocationName && (
-        <LocationModal locationName={selectedLocationName} snapshots={snapshots} currentResult={currentResult} onResultEdit={onResultEdit} onClose={() => setSelectedLocationName(null)} />
+        <LocationModal locationName={selectedLocationName} snapshots={snapshots} currentResult={currentResult} onResultEdit={onResultEdit} currentChapterIndex={currentChapterIndex} onClose={() => setSelectedLocationName(null)} onEntityClick={handleEntityClick} />
       )}
       {selectedArcName && (
-        <NarrativeArcModal arcName={selectedArcName} snapshots={snapshots} currentResult={currentResult} onResultEdit={onResultEdit} onClose={() => setSelectedArcName(null)} />
+        <NarrativeArcModal arcName={selectedArcName} snapshots={snapshots} currentResult={currentResult} onResultEdit={onResultEdit} currentChapterIndex={currentChapterIndex} onClose={() => setSelectedArcName(null)} onEntityClick={handleEntityClick} />
       )}
       <div
         className={`relative h-full min-h-0 rounded-xl border overflow-hidden ${isDragging ? 'border-amber-500/40' : 'border-stone-200 dark:border-zinc-800'}`}
@@ -625,9 +637,15 @@ export default function MapBoard({ characters, arcs = [], locationInfos = [], bo
   return (
     <>
     {selectedLocationName && (
-      <LocationModal locationName={selectedLocationName} snapshots={snapshots} currentResult={currentResult} onResultEdit={onResultEdit} onClose={() => setSelectedLocationName(null)} />
+      <LocationModal locationName={selectedLocationName} snapshots={snapshots} currentResult={currentResult} onResultEdit={onResultEdit} currentChapterIndex={currentChapterIndex} onClose={() => setSelectedLocationName(null)} onEntityClick={handleEntityClick} />
     )}
-    {selectedCharName && (() => { const c = characters.find((ch) => ch.name === selectedCharName); return c ? <CharacterModal character={c} snapshots={snapshots} currentResult={currentResult} onResultEdit={onResultEdit} onClose={() => setSelectedCharName(null)} /> : null; })()}
+    {selectedCharName && (() => {
+      const lower = selectedCharName.toLowerCase();
+      const c = characters.find((ch) => ch.name === selectedCharName)
+        ?? characters.find((ch) => ch.name.toLowerCase() === lower)
+        ?? characters.find((ch) => ch.aliases.some((a) => a.toLowerCase() === lower));
+      return c ? <CharacterModal character={c} snapshots={snapshots} currentResult={currentResult} onResultEdit={onResultEdit} currentChapterIndex={currentChapterIndex} onClose={() => setSelectedCharName(null)} onEntityClick={handleEntityClick} /> : null;
+    })()}
     <div className="flex gap-4 h-full min-h-0">
       {/* Map area */}
       <div className="flex-1 min-w-0 flex flex-col gap-2 min-h-0">

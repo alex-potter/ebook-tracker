@@ -186,6 +186,24 @@ function isFrontMatter(ch: { title: string; text: string }): boolean {
   return FRONT_MATTER_RE.test(ch.title) || ch.text.trim().length < 200;
 }
 
+const BACK_MATTER_RE = /^\s*(acknowledgements?|acknowledgments?|about\s+the\s+author|author'?s?\s+note|note\s+(from|by)\s+the\s+author|also\s+by|other\s+books|bibliography|glossary|appendix|afterword|bonus|excerpt|preview|sneak\s+peek|reading\s+group|book\s+club|discussion\s+questions?)\s*$/i;
+
+function isBackMatter(ch: { title: string; text: string }): boolean {
+  return BACK_MATTER_RE.test(ch.title) || ch.text.trim().length < 200;
+}
+
+function detectChapterRange(chapters: Array<{ title: string; text: string }>): { start: number; end: number } {
+  let start = 0;
+  for (let i = 0; i < chapters.length; i++) {
+    if (!isFrontMatter(chapters[i])) { start = i; break; }
+  }
+  let end = chapters.length - 1;
+  for (let i = chapters.length - 1; i >= start; i--) {
+    if (!isBackMatter(chapters[i])) { end = i; break; }
+  }
+  return { start, end };
+}
+
 async function analyzeChapter(
   bookTitle: string,
   bookAuthor: string,
@@ -331,7 +349,7 @@ export default function Home() {
 
   const [rebuilding, setRebuilding] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
-  const [rebuildProgress, setRebuildProgress] = useState<{ current: number; total: number } | null>(null);
+  const [rebuildProgress, setRebuildProgress] = useState<{ current: number; total: number; chapterTitle?: string; chapterIndex?: number } | null>(null);
   const rebuildCancelRef = useRef(false);
   const analyzeCancelRef = useRef(false);
 
@@ -344,6 +362,7 @@ export default function Home() {
   const [excludedBooks, setExcludedBooks] = useState<Set<number>>(new Set());
   const [excludedChapters, setExcludedChapters] = useState<Set<number>>(new Set());
   const [chapterRange, setChapterRangeState] = useState<{ start: number; end: number } | null>(null);
+  const [needsSetup, setNeedsSetup] = useState(false);
   const [mapState, setMapState] = useState<MapState | null>(null);
 
   function toggleBook(bookIndex: number) {
@@ -380,6 +399,12 @@ export default function Home() {
       storedRef.current = updated;
       saveStored(book.title, book.author, updated);
     }
+  }
+
+  function completeSetup(range: { start: number; end: number }) {
+    setChapterRange(range);
+    setNeedsSetup(false);
+    setCurrentIndex(range.start);
   }
 
   const [tab, setTab] = useState<MainTab>('characters');
@@ -646,6 +671,18 @@ export default function Home() {
       const nextIdx = Math.min(initialStored.lastAnalyzedIndex + 1, parsed.chapters.length - 1);
       setCurrentIndex(nextIdx);
     }
+
+    const isNewBook = !initialStored || initialStored.lastAnalyzedIndex === -2;
+    const hasNoRange = !initialStored?.chapterRange;
+    const hasText = parsed.chapters.some((ch) => ch.text);
+
+    if (isNewBook && hasNoRange && hasText) {
+      const detected = detectChapterRange(parsed.chapters);
+      setChapterRangeState(detected);
+      setNeedsSetup(true);
+    } else {
+      setNeedsSetup(false);
+    }
   }
 
   async function loadBookFromMeta(title: string, author: string) {
@@ -760,7 +797,7 @@ export default function Home() {
   }
 
   const handleAnalyze = useCallback(async () => {
-    if (!book) return;
+    if (!book || needsSetup) return;
     analyzeCancelRef.current = false;
     setAnalyzing(true);
     setAnalyzeError(null);
@@ -785,8 +822,8 @@ export default function Home() {
       for (let step = 0; step < toAnalyze.length; step++) {
         if (analyzeCancelRef.current) break;
         const i = toAnalyze[step];
-        setRebuildProgress({ current: step + 1, total });
         const ch = book.chapters[i];
+        setRebuildProgress({ current: step + 1, total, chapterTitle: ch.title, chapterIndex: i });
         const { result: chapterResult, model: chapterModel } = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated, book.chapters.map((c) => c.title));
         accumulated = chapterResult;
         snapshots = upsertSnapshot(snapshots, i, accumulated, chapterModel, APP_VERSION);
@@ -803,7 +840,7 @@ export default function Home() {
       setRebuildProgress(null);
       analyzeCancelRef.current = false;
     }
-  }, [book, currentIndex, excludedBooks, excludedChapters, chapterRange]);
+  }, [book, currentIndex, excludedBooks, excludedChapters, chapterRange, needsSetup]);
 
   const handleRebuild = useCallback(async () => {
     if (!book) return;
@@ -825,8 +862,8 @@ export default function Home() {
       for (let step = 0; step < toRebuild.length; step++) {
         if (rebuildCancelRef.current) break;
         const i = toRebuild[step];
-        setRebuildProgress({ current: step + 1, total: rebuildTotal });
         const ch = book.chapters[i];
+        setRebuildProgress({ current: step + 1, total: rebuildTotal, chapterTitle: ch.title, chapterIndex: i });
         const { result: rebuildResult, model: rebuildModel } = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated, book.chapters.map((c) => c.title));
         accumulated = rebuildResult;
         snapshots = upsertSnapshot(snapshots, i, accumulated, rebuildModel, APP_VERSION);
@@ -866,8 +903,8 @@ export default function Home() {
       for (let step = 0; step < toProcess.length; step++) {
         if (rebuildCancelRef.current) break;
         const i = toProcess[step];
-        setRebuildProgress({ current: step + 1, total });
         const ch = book.chapters[i];
+        setRebuildProgress({ current: step + 1, total, chapterTitle: ch.title, chapterIndex: i });
         const { result: chResult, model: chModel } = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated, book.chapters.map((c) => c.title));
         accumulated = chResult;
         snapshots = upsertSnapshot(snapshots, i, accumulated, chModel, APP_VERSION);
@@ -1167,6 +1204,7 @@ export default function Home() {
   const snapshotIndices = new Set((stored?.snapshots ?? []).map((s) => s.index));
   // Whether the displayed result is from a historical snapshot rather than the latest
   const isViewingHistory = viewingSnapshotIndex !== null;
+  const currentChapterIndex = viewingSnapshotIndex ?? stored?.lastAnalyzedIndex ?? 0;
 
   return (
     <main className="h-screen flex flex-col overflow-hidden">
@@ -1305,6 +1343,8 @@ export default function Home() {
             onSetRange={setChapterRange}
             onDeleteSnapshot={handleDeleteSnapshot}
             metaOnly={isMetaOnly}
+            needsSetup={needsSetup}
+            onCompleteSetup={completeSetup}
           />
           {analyzeError && <p className="mt-3 text-xs text-red-500 text-center">{analyzeError}</p>}
         </aside>
@@ -1449,6 +1489,7 @@ export default function Home() {
                   resolvedCharacters={derived.resolvedCharacters}
                   locationAliasMap={derived.locationAliasMap}
                   locationGroups={derived.locationGroups}
+                  currentChapterIndex={currentChapterIndex}
                   onMapStateChange={(state) => {
                     setMapState(state);
                     saveMapState(book.title, book.author, state);
@@ -1486,9 +1527,9 @@ export default function Home() {
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-sm font-medium text-stone-700 dark:text-zinc-300 truncate">
                           {rebuilding ? 'Rebuilding' : 'Analyzing'} · {rebuildProgress.current}/{rebuildProgress.total}
-                          {rebuildProgress.current > 0 && (
+                          {rebuildProgress.chapterTitle && (
                             <span className="ml-2 font-normal text-stone-400 dark:text-zinc-500">
-                              {book.chapters[rebuildProgress.current - 1]?.title}
+                              {rebuildProgress.chapterTitle}
                             </span>
                           )}
                         </p>
@@ -1577,6 +1618,7 @@ export default function Home() {
                               chapterTitles={book.chapters.map((ch) => ch.title)}
                               currentResult={result}
                               onResultEdit={applyResultEdit}
+                              currentChapterIndex={currentChapterIndex}
                             />
                           ))}
                         </div>
@@ -1598,6 +1640,7 @@ export default function Home() {
                       resolvedCharacters={derived.resolvedCharacters}
                       locationAliasMap={derived.locationAliasMap}
                       locationGroups={derived.locationGroups}
+                      currentChapterIndex={currentChapterIndex}
                       onLocationImageChange={(image, label) => {
                         const next: MapState = {
                           imageDataUrl: mapState?.imageDataUrl ?? '',
@@ -1618,6 +1661,7 @@ export default function Home() {
                       currentResult={result}
                       onResultEdit={applyResultEdit}
                       arcChapterMap={derived.arcChapterMap}
+                      currentChapterIndex={currentChapterIndex}
                     />
                   )}
 
@@ -1630,6 +1674,7 @@ export default function Home() {
                       aggregated={derived.aggregated}
                       bookTitle={book.title}
                       bookAuthor={book.author}
+                      currentChapterIndex={currentChapterIndex}
                     />
                   )}
                 </div>
