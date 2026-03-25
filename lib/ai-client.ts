@@ -14,6 +14,7 @@ import {
   mergeDelta,
   recoverPartialJson,
 } from './ai-shared';
+import { validateCharactersAgainstText, validateLocationsAgainstText } from './validate-entities';
 
 // ---------------------------------------------------------------------------
 // Settings
@@ -261,9 +262,29 @@ export async function analyzeChapterClient(
 
   if (isDelta) {
     const delta = parsed as { updatedCharacters?: AnalysisResult['characters']; updatedLocations?: AnalysisResult['locations']; summary?: string };
+    // Validate delta entities against source text before merging
+    if (delta.updatedCharacters?.length) {
+      const { validated } = validateCharactersAgainstText(delta.updatedCharacters, chapter.text);
+      delta.updatedCharacters = validated;
+    }
+    if (delta.updatedLocations?.length) {
+      const { validated } = validateLocationsAgainstText(delta.updatedLocations, chapter.text);
+      delta.updatedLocations = validated;
+    }
     return mergeDelta(previousResult!, delta);
   }
-  return parsed as unknown as AnalysisResult;
+
+  // Full analysis: validate entities against source text
+  const result = parsed as unknown as AnalysisResult;
+  if (result.characters?.length) {
+    const { validated } = validateCharactersAgainstText(result.characters, chapter.text);
+    result.characters = validated;
+  }
+  if (result.locations?.length) {
+    const { validated } = validateLocationsAgainstText(result.locations, chapter.text);
+    result.locations = validated.length > 0 ? validated : undefined;
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------

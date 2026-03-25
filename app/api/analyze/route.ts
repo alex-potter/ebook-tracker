@@ -4,6 +4,7 @@ import { Agent, fetch as undiciFetch } from 'undici';
 import type { AnalysisResult } from '@/types';
 import { reconcileResult, computeNameOverlaps, updateArcReferences, type CallAndParseFn } from '@/lib/reconcile';
 import { levenshtein } from '@/lib/ai-shared';
+import { escapeRegex, validateCharactersAgainstText, validateLocationsAgainstText } from '@/lib/validate-entities';
 
 // Undici agent with no headers/body timeout — our AbortController handles cancellation
 const ollamaAgent = new Agent({ headersTimeout: 0, bodyTimeout: 0 });
@@ -1022,59 +1023,6 @@ function deduplicateArcs(arcs: AnalysisResult['arcs']): AnalysisResult['arcs'] {
   return entries;
 }
 
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * Validate that each character's name (or at least one alias) actually appears in the chapter text.
- * Characters whose names don't appear are likely hallucinations and get dropped.
- */
-function validateCharactersAgainstText(
-  chars: AnalysisResult['characters'],
-  chapterText: string,
-): { validated: AnalysisResult['characters']; dropped: string[] } {
-  const textLower = chapterText.toLowerCase();
-  const validated: AnalysisResult['characters'] = [];
-  const dropped: string[] = [];
-
-  for (const char of chars) {
-    const allNames = [char.name, ...(char.aliases ?? [])];
-
-    let isGrounded = allNames.some((name) => {
-      const nameLower = name.toLowerCase().trim();
-      if (nameLower.length < 2) return false;
-      // Short names (<=3 chars): require word boundaries to avoid "Art" matching "heart"
-      if (nameLower.length <= 3) {
-        const pattern = new RegExp(`\\b${escapeRegex(nameLower)}\\b`, 'i');
-        return pattern.test(chapterText);
-      }
-      // Longer names: substring containment is sufficient
-      return textLower.includes(nameLower);
-    });
-
-    // Fallback for multi-word names: check individual significant words.
-    // Require the LAST word (most likely a surname/distinctive identifier) to appear,
-    // not just any word — otherwise generic titles like "Lord", "Sir", "Captain"
-    // let hallucinated names through.
-    if (!isGrounded && char.name.split(/\s+/).length > 1) {
-      const words = char.name.split(/\s+/).filter((w) => w.length >= 3);
-      if (words.length > 0) {
-        const surname = words[words.length - 1];
-        const pattern = new RegExp(`\\b${escapeRegex(surname.toLowerCase())}\\b`, 'i');
-        isGrounded = pattern.test(chapterText);
-      }
-    }
-
-    if (isGrounded) {
-      validated.push(char);
-    } else {
-      dropped.push(char.name);
-    }
-  }
-
-  return { validated, dropped };
-}
 
 /** After arcs are identified, assign arc labels to locations based on character-arc overlap. */
 function assignArcsToLocations(
@@ -1498,9 +1446,14 @@ async function runMultiPassFull(
     buildLocationsFullPrompt(bookTitle, bookAuthor, chapterTitle, characters, text, allChapterTitles, locSchema),
     useLocal, callOpts, 'locations-full', useLocal ? 8192 : undefined,
   );
-  const locations = locsResult?.locations ?? [];
+  const rawLocations = locsResult?.locations ?? [];
   const summary = locsResult?.summary ?? '';
-  console.log(`[analyze] Pass 2 done: ${locations.length} locations`);
+  console.log(`[analyze] Pass 2 done: ${rawLocations.length} locations`);
+
+  // Text grounding: drop locations whose names don't appear in the text
+  const { validated: groundedLocs, dropped: droppedLocs } = validateLocationsAgainstText(rawLocations, text);
+  if (droppedLocs.length) console.log(`[analyze] Dropped ${droppedLocs.length} ungrounded locations: ${droppedLocs.join(', ')}`);
+  const locations = groundedLocs;
 
   // Pass 3: Arcs (with full character + location context)
   console.log('[analyze] Pass 3: arcs');
@@ -1608,7 +1561,10 @@ async function runMultiPassDelta(
     buildLocationsDeltaPrompt(bookTitle, bookAuthor, chapterTitle, currentCharacters, previousResult.locations, text, locDeltaSchema),
     useLocal, callOpts, 'locations-delta', useLocal ? 8192 : undefined,
   );
-  const locDelta = { updatedLocations: locsResult?.updatedLocations, summary: locsResult?.summary };
+  let deltaLocs = locsResult?.updatedLocations ?? [];
+  const { validated: groundedDeltaLocs, dropped: droppedDeltaLocs } = validateLocationsAgainstText(deltaLocs, text);
+  if (droppedDeltaLocs.length) console.log(`[analyze] Dropped ${droppedDeltaLocs.length} ungrounded delta locations: ${droppedDeltaLocs.join(', ')}`);
+  const locDelta = { updatedLocations: groundedDeltaLocs, summary: locsResult?.summary };
   const afterLocs = mergeDelta({ ...afterChars, characters: currentCharacters }, locDelta);
   const currentLocations = afterLocs.locations;
   console.log(`[analyze] Pass 2 done: ${locDelta.updatedLocations?.length ?? 0} location changes`);
