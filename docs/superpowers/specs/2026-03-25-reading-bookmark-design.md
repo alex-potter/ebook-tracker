@@ -24,7 +24,7 @@ interface StoredBookState {
 
 **Default behavior:** When `readingBookmark` is `undefined` (legacy data or first load), the app falls back to `lastAnalyzedIndex`. This preserves current behavior for existing users. Once the user explicitly sets the bookmark, it persists with the book state via `saveStored()`.
 
-## Entity Panel Filtering
+## Snapshot Loading and Entity Filtering
 
 ### Current behavior
 
@@ -32,7 +32,7 @@ interface StoredBookState {
 const currentChapterIndex = viewingSnapshotIndex ?? stored?.lastAnalyzedIndex ?? 0;
 ```
 
-All entity panels receive `currentChapterIndex` and filter events/data to `<= currentChapterIndex`.
+When navigating, `handleChapterChange` loads the nearest snapshot's `result` into state. Entity panels receive `currentChapterIndex` and filter events/data to `<= currentChapterIndex`.
 
 ### New behavior
 
@@ -42,12 +42,25 @@ Introduce `effectiveBookmark`:
 const effectiveBookmark = stored?.readingBookmark ?? stored?.lastAnalyzedIndex ?? 0;
 ```
 
-Entity panels receive a filtering index computed as:
+**Snapshot loading:** The `result` loaded into state determines what entity data is available. This interacts with the bookmark as follows:
 
-- **Normal navigation (at or below bookmark):** filter to `effectiveBookmark`
-- **Spoiler-dismissed navigation (viewing a chapter beyond bookmark):** filter to `max(effectiveBookmark, spoilerDismissedIndex)` where `spoilerDismissedIndex` is the chapter the user acknowledged the warning for
+- **Default view (no navigation):** Load the snapshot at `effectiveBookmark` (not `lastAnalyzedIndex`). This is the key change — the default view shows the world as of the user's reading progress.
+- **Navigating to a chapter at or below bookmark:** Load that chapter's snapshot normally. Its data is naturally limited to that point, so no spoiler risk. Entity panels still receive `effectiveBookmark` as `currentChapterIndex` so they can show data up to the bookmark.
+- **Navigating to a chapter above bookmark (spoiler dismissed):** Load that chapter's snapshot. Entity panels receive `viewingSnapshotIndex` as `currentChapterIndex` since the user has acknowledged the spoiler.
 
-The existing `viewingSnapshotIndex` continues to control which snapshot's data is *loaded/displayed*. The bookmark controls the *spoiler ceiling* for filtering.
+The computed `currentChapterIndex` becomes:
+
+```typescript
+if (spoilerDismissedIndex != null) {
+  currentChapterIndex = spoilerDismissedIndex; // user acknowledged, show full snapshot
+} else if (viewingSnapshotIndex != null && viewingSnapshotIndex <= effectiveBookmark) {
+  currentChapterIndex = effectiveBookmark; // exploring below bookmark, show up to bookmark
+} else {
+  currentChapterIndex = effectiveBookmark; // default view
+}
+```
+
+Note: when navigating below the bookmark, the loaded `result` comes from that chapter's snapshot (limited data), but `currentChapterIndex = effectiveBookmark` allows panels that merge data from multiple snapshots (e.g., timeline views) to show the full range up to the bookmark.
 
 ## Spoiler Gating
 
@@ -74,7 +87,7 @@ With a dismiss/acknowledge button. Once dismissed, the full snapshot data for th
 
 ### Sidebar (ChapterSelector)
 
-- **Bookmark icon per chapter row:** A small bookmark icon (e.g., `🔖` or SVG) appears on hover for each chapter row. Clicking it sets the reading bookmark to that chapter.
+- **Bookmark icon per chapter row:** A small bookmark icon (e.g., `🔖` or SVG) appears on hover for each chapter row. Clicking it sets the reading bookmark to that chapter. Clicking the icon on the currently-bookmarked chapter clears the bookmark (returns to default `lastAnalyzedIndex` behavior).
 - **Active bookmark indicator:** The bookmarked chapter row displays a persistent bookmark icon, visually distinct from hover state.
 - **Visual dimming:** Chapters beyond the bookmark are slightly dimmed (reduced opacity or muted text color) to signal they contain unread content. They remain clickable (unlike unanalyzed chapters which are disabled).
 
@@ -104,6 +117,13 @@ No prop changes needed. The existing `currentChapterIndex` prop is already used 
 |------|--------|
 | `app/page.tsx` | Add `readingBookmark` to `StoredBookState`, compute `effectiveBookmark`, add `spoilerDismissedIndex` state, update `currentChapterIndex` computation, add bookmark handler, render spoiler banner, render header bookmark indicator + dropdown, pass bookmark props to `ChapterSelector` |
 | `components/ChapterSelector.tsx` | Accept `readingBookmark` and `onSetBookmark` props, render bookmark icon per row, dim chapters beyond bookmark |
+| `components/StoryTimeline.tsx` | Receives `currentChapterIndex` which will now reflect the bookmark; no component-level changes needed, but listed for awareness |
+
+## Scope Exclusions
+
+- **ChatPanel / share context:** The bookmark does not limit what context is sent to the AI chat or shared via the share feature. These use the full analysis data. This may be revisited in a future iteration.
+- **Playback mode:** The `playing` auto-advance feature does not interact with the bookmark. It continues to step through all available snapshots.
+- **Snapshot stepper:** The prev/next snapshot arrows in the entity panel area follow the same spoiler gating rules as sidebar navigation — stepping beyond the bookmark triggers the spoiler warning.
 
 ## Persistence
 
@@ -115,3 +135,5 @@ The bookmark is saved via the existing `saveStored()` function whenever the user
 - **New analysis extends past bookmark:** Bookmark stays where the user set it. The newly analyzed chapters appear dimmed in the sidebar.
 - **Series continuation:** When carrying forward state to a new book, `readingBookmark` resets to `undefined` (defaults to `lastAnalyzedIndex` of -1).
 - **Legacy data migration:** No migration needed. `undefined` falls back to current behavior.
+- **Bookmark at excluded chapter:** Valid. The bookmark is a chapter index, not a snapshot index. Filtering uses the nearest available snapshot at or below the bookmark index (same `bestSnapshot()` logic already used for navigation).
+- **Bookmark during active analysis:** If `readingBookmark` is `undefined`, `effectiveBookmark` falls back to `lastAnalyzedIndex` which advances during analysis. This is correct — users who have not opted into spoiler protection see the default advancing behavior. Once they set an explicit bookmark, it stays fixed regardless of analysis progress.
