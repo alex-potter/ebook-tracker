@@ -47,6 +47,7 @@ interface StoredBookState {
   excludedChapters?: number[];  // global chapter indices excluded from analysis
   chapterRange?: { start: number; end: number }; // inclusive chapter index range for analysis
   bookMeta?: BookMeta;
+  readingBookmark?: number; // user-set "read up to" chapter index (inclusive)
 }
 
 interface SavedBookEntry {
@@ -307,6 +308,7 @@ export default function Home() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   // Which chapter index the currently displayed result corresponds to (null = latest)
   const [viewingSnapshotIndex, setViewingSnapshotIndex] = useState<number | null>(null);
+  const [spoilerDismissedIndex, setSpoilerDismissedIndex] = useState<number | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
 
@@ -663,13 +665,23 @@ export default function Home() {
     setChapterRangeState(initialStored?.chapterRange ?? null);
     setMapState(loadMapState(parsed.title, parsed.author));
     setBook(parsed);
-    setViewingSnapshotIndex(null);
-    setCurrentIndex(0);
     if (initialStored && initialStored.lastAnalyzedIndex >= 0) {
-      setResult(initialStored.result);
-      // Default to the next unanalyzed chapter so Analyze is ready to go immediately
-      const nextIdx = Math.min(initialStored.lastAnalyzedIndex + 1, parsed.chapters.length - 1);
-      setCurrentIndex(nextIdx);
+      const bookmark = initialStored.readingBookmark;
+      if (bookmark != null && bookmark < initialStored.lastAnalyzedIndex) {
+        // Load the bookmark's snapshot as the default view
+        const snap = bestSnapshot(initialStored.snapshots, bookmark);
+        setResult(snap?.result ?? initialStored.result);
+        setViewingSnapshotIndex(snap?.index ?? null);
+        setCurrentIndex(bookmark);
+      } else {
+        setResult(initialStored.result);
+        setViewingSnapshotIndex(null);
+        const nextIdx = Math.min(initialStored.lastAnalyzedIndex + 1, parsed.chapters.length - 1);
+        setCurrentIndex(nextIdx);
+      }
+    } else {
+      setViewingSnapshotIndex(null);
+      setCurrentIndex(0);
     }
 
     const isNewBook = !initialStored || initialStored.lastAnalyzedIndex === -2;
@@ -1204,7 +1216,14 @@ export default function Home() {
   const snapshotIndices = new Set((stored?.snapshots ?? []).map((s) => s.index));
   // Whether the displayed result is from a historical snapshot rather than the latest
   const isViewingHistory = viewingSnapshotIndex !== null;
-  const currentChapterIndex = viewingSnapshotIndex ?? stored?.lastAnalyzedIndex ?? 0;
+  const effectiveBookmark = Math.min(
+    stored?.readingBookmark ?? stored?.lastAnalyzedIndex ?? 0,
+    stored?.lastAnalyzedIndex ?? 0,
+  ); // clamp bookmark to analyzed range
+  // viewingSnapshotIndex is deliberately excluded: the bookmark is the spoiler ceiling.
+  // When viewing a snapshot below the bookmark, panels still show data up to the bookmark.
+  // When viewing beyond the bookmark (spoiler dismissed), spoilerDismissedIndex takes over.
+  const currentChapterIndex = spoilerDismissedIndex ?? effectiveBookmark;
 
   return (
     <main className="h-screen flex flex-col overflow-hidden">
@@ -1633,23 +1652,12 @@ export default function Home() {
                       bookTitle={book.title}
                       snapshots={stored?.snapshots ?? []}
                       chapterTitles={book.chapters.map((ch) => ch.title)}
-                      locationImage={mapState?.locationImage}
-                      locationLabel={mapState?.locationLabel}
                       currentResult={result}
                       onResultEdit={applyResultEdit}
                       resolvedCharacters={derived.resolvedCharacters}
                       locationAliasMap={derived.locationAliasMap}
                       locationGroups={derived.locationGroups}
                       currentChapterIndex={currentChapterIndex}
-                      onLocationImageChange={(image, label) => {
-                        const next: MapState = {
-                          imageDataUrl: mapState?.imageDataUrl ?? '',
-                          pins: mapState?.pins ?? {},
-                          ...(image ? { locationImage: image, locationLabel: label } : {}),
-                        };
-                        setMapState(next);
-                        saveMapState(book.title, book.author, next);
-                      }}
                     />
                   )}
 
