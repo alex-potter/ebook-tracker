@@ -25,6 +25,8 @@ interface Props {
   onSetRange?: (range: { start: number; end: number } | null) => void;
   onProcessBook?: () => void;
   onDeleteSnapshot?: (chapterIndex: number) => void;
+  readingBookmark?: number;
+  onSetBookmark?: (chapterIndex: number | null) => void;
   metaOnly?: boolean;
   needsSetup?: boolean;
   onCompleteSetup?: (range: { start: number; end: number }) => void;
@@ -67,12 +69,15 @@ interface ChapterItemProps {
   isRangeEnd?: boolean;
   onSetRangeStart?: (index: number) => void;
   onSetRangeEnd?: (index: number) => void;
+  readingBookmark?: number;
+  onSetBookmark?: (chapterIndex: number | null) => void;
 }
 
 function ChapterItem({
   ch, globalIndex, currentIndex, lastAnalyzedIndex, snapshotIndices,
   isExcluded, rebuilding, rebuildProgress, mode, chapters, onChange, setLocationInput, onToggleChapter, onDeleteSnapshot,
   isRangeStart, isRangeEnd, onSetRangeStart, onSetRangeEnd,
+  readingBookmark, onSetBookmark,
 }: ChapterItemProps) {
   const isRebuildingThis = rebuilding && rebuildProgress && globalIndex === (rebuildProgress.chapterIndex ?? rebuildProgress.current - 1);
   const hasSnapshot = snapshotIndices?.has(globalIndex) ?? false;
@@ -81,6 +86,8 @@ function ChapterItem({
   const isCurrent = globalIndex === currentIndex;
   // Chapters up to the furthest point the user has reached (read or analyzed) are navigable
   const frontier = Math.max(currentIndex, lastAnalyzedIndex ?? -1);
+
+  const isBeyondBookmark = readingBookmark != null && globalIndex > readingBookmark;
 
   const marker = isExcluded ? '✗'
     : isRangeStart && isRangeEnd ? '⊡'
@@ -111,7 +118,7 @@ function ChapterItem({
         }}
         disabled={globalIndex > frontier || isExcluded}
         title={hasSnapshot ? 'Snapshot saved' : undefined}
-        className={`flex-1 text-left px-2.5 py-1.5 rounded-md text-xs transition-colors ${color}`}
+        className={`flex-1 text-left px-2.5 py-1.5 rounded-md text-xs transition-colors ${color}${isBeyondBookmark ? ' opacity-50' : ''}`}
       >
         <span className="mr-1.5 text-[10px]">{marker}</span>
         {normalizeTitle(ch.title)}
@@ -119,6 +126,21 @@ function ChapterItem({
           <span className="ml-1 text-stone-400 dark:text-zinc-600">~{chapterIndexToLocation(globalIndex, chapters).toLocaleString()}</span>
         )}
       </button>
+      {onSetBookmark && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onSetBookmark(globalIndex === readingBookmark ? null : globalIndex); }}
+          className={`flex-shrink-0 ml-0.5 w-4 h-4 flex items-center justify-center rounded text-[9px] transition-opacity ${
+            globalIndex === readingBookmark
+              ? 'text-amber-500 opacity-100'
+              : 'text-stone-300 dark:text-zinc-700 hover:text-amber-500 opacity-0 group-hover:opacity-100'
+          }`}
+          title={globalIndex === readingBookmark ? 'Clear bookmark' : 'Bookmark here'}
+        >
+          <svg width="8" height="11" viewBox="0 0 10 14" fill="currentColor">
+            <path d="M0 0h10v14L5 10.5 0 14V0z"/>
+          </svg>
+        </button>
+      )}
       {onSetRangeStart && (
         <button
           onClick={(e) => { e.stopPropagation(); onSetRangeStart(globalIndex); }}
@@ -340,7 +362,7 @@ export default function ChapterSelector({
   chapters, currentIndex, onChange, onAnalyze, onCancelAnalyze, onRebuild, onCancelRebuild,
   analyzing, rebuilding, rebuildProgress, lastAnalyzedIndex,
   snapshotIndices, excludedBooks, onToggleBook, excludedChapters, onToggleChapter,
-  chapterRange, onSetRange, onProcessBook, onDeleteSnapshot, metaOnly,
+  chapterRange, onSetRange, onProcessBook, onDeleteSnapshot, readingBookmark, onSetBookmark, metaOnly,
   needsSetup, onCompleteSetup,
 }: Props) {
   const [mode, setMode] = useState<'chapter' | 'location'>('chapter');
@@ -414,6 +436,8 @@ export default function ChapterSelector({
     onToggleChapter, onDeleteSnapshot,
     onSetRangeStart: onSetRange ? handleSetRangeStart : undefined,
     onSetRangeEnd: onSetRange ? handleSetRangeEnd : undefined,
+    readingBookmark,
+    onSetBookmark,
   };
 
   if (needsSetup && onCompleteSetup) {

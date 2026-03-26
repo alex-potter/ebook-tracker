@@ -1418,6 +1418,8 @@ export default function Home() {
             chapterRange={chapterRange}
             onSetRange={setChapterRange}
             onDeleteSnapshot={handleDeleteSnapshot}
+            readingBookmark={stored?.readingBookmark}
+            onSetBookmark={handleSetBookmark}
             metaOnly={isMetaOnly}
             needsSetup={needsSetup}
             onCompleteSetup={completeSetup}
