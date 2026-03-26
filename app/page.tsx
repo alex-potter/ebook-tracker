@@ -1279,6 +1279,9 @@ export default function Home() {
   // When viewing beyond the bookmark (spoiler dismissed), spoilerDismissedIndex takes over.
   const currentChapterIndex = spoilerDismissedIndex ?? effectiveBookmark;
 
+  const isBeyondBookmark = stored?.readingBookmark != null && currentIndex > effectiveBookmark;
+  const showSpoilerBanner = isBeyondBookmark && spoilerDismissedIndex !== currentIndex;
+
   return (
     <main className="h-screen flex flex-col overflow-hidden">
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
@@ -1553,6 +1556,21 @@ export default function Home() {
               </div>
             );
           })()}
+
+          {showSpoilerBanner && (
+            <div className="mb-4 flex items-center gap-3 px-4 py-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex-shrink-0">
+              <span className="text-amber-500 text-sm flex-shrink-0">&#9888;</span>
+              <p className="flex-1 text-sm text-stone-600 dark:text-zinc-400">
+                Chapter {currentIndex + 1} is past your bookmark (Ch. {effectiveBookmark + 1}).
+              </p>
+              <button
+                onClick={handleDismissSpoiler}
+                className="flex-shrink-0 px-3 py-1 text-xs font-medium bg-amber-500/20 hover:bg-amber-500/30 text-amber-600 dark:text-amber-400 rounded-lg transition-colors"
+              >
+                Show anyway
+              </button>
+            </div>
+          )}
 
           {/* Map tab — always accessible, fills remaining height */}
           {tab === 'map' && (
