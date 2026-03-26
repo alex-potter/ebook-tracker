@@ -757,18 +757,45 @@ export default function Home() {
     const stored = storedRef.current;
     if (!stored || stored.lastAnalyzedIndex < 0) return;
 
+    const bookmark = Math.min(
+      stored.readingBookmark ?? stored.lastAnalyzedIndex,
+      stored.lastAnalyzedIndex,
+    );
+
+    if (i > bookmark) {
+      // Beyond bookmark — don't load snapshot yet, show spoiler warning
+      setSpoilerDismissedIndex(null);
+      return;
+    }
+
+    // Within bookmark — clear spoiler state and load snapshot
+    setSpoilerDismissedIndex(null);
+
     if (i >= stored.lastAnalyzedIndex) {
-      // At or beyond the latest analyzed chapter — show the latest result
       setResult(stored.result);
       setViewingSnapshotIndex(null);
     } else {
-      // Earlier chapter — look up nearest snapshot
       const snap = bestSnapshot(stored.snapshots, i);
       if (snap) {
         setResult(snap.result);
         setViewingSnapshotIndex(snap.index);
       }
-      // If no snapshot exists yet for this range, keep the current display
+    }
+  }
+
+  function handleDismissSpoiler() {
+    const stored = storedRef.current;
+    if (!stored) return;
+    setSpoilerDismissedIndex(currentIndex);
+    if (currentIndex >= stored.lastAnalyzedIndex) {
+      setResult(stored.result);
+      setViewingSnapshotIndex(null);
+    } else {
+      const snap = bestSnapshot(stored.snapshots, currentIndex);
+      if (snap) {
+        setResult(snap.result);
+        setViewingSnapshotIndex(snap.index);
+      }
     }
   }
 
@@ -1450,6 +1477,20 @@ export default function Home() {
             const chTitle = normalizeTitle(book.chapters[snap?.index]?.title ?? `Chapter ${(snap?.index ?? 0) + 1}`);
             function goTo(newPos: number) {
               const target = snaps[newPos];
+              const bookmark = Math.min(
+                storedRef.current?.readingBookmark ?? stored!.lastAnalyzedIndex,
+                stored!.lastAnalyzedIndex,
+              );
+              const targetIndex = newPos === snaps.length - 1 ? stored!.lastAnalyzedIndex : target.index;
+
+              if (targetIndex > bookmark) {
+                // Beyond bookmark — move sidebar position but don't load data
+                setCurrentIndex(targetIndex);
+                setSpoilerDismissedIndex(null);
+                return;
+              }
+
+              setSpoilerDismissedIndex(null);
               if (newPos === snaps.length - 1) {
                 setCurrentIndex(stored!.lastAnalyzedIndex);
                 setResult(stored!.result);
