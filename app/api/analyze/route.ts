@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { AnalysisResult } from '@/types';
-import { reconcileResult, computeNameOverlaps, updateArcReferences, type CallAndParseFn } from '@/lib/reconcile';
+import { reconcileResult, computeNameOverlaps, updateArcReferences, buildCharReconcilePrompt, type CallAndParseFn } from '@/lib/reconcile';
 import { levenshtein } from '@/lib/ai-shared';
 import { escapeRegex, validateCharactersAgainstText, validateLocationsAgainstText } from '@/lib/validate-entities';
 import { callLLM, resolveConfig, type LLMResult } from '@/lib/llm';
@@ -248,12 +248,13 @@ interface Verdict {
 function buildVerificationPrompt(
   characters: AnalysisResult['characters'],
   chapterText: string,
+  maxTextChars?: number,
 ): string {
   const charBlock = characters.map((c, i) =>
     `#${i}: ${c.name} (aliases: ${c.aliases?.join(', ') || 'none'})`,
   ).join('\n');
 
-  const maxTextLen = 80_000;
+  const maxTextLen = maxTextChars ?? 80_000;
   const truncatedText = chapterText.length > maxTextLen
     ? chapterText.slice(0, maxTextLen) + '\n[...truncated...]'
     : chapterText;
@@ -1443,9 +1444,12 @@ async function runMultiPassFull(
   // LLM verification pass: review extracted characters against source text (cloud models only)
   if (config.provider !== 'ollama' && characters.length > 0) {
     console.log('[analyze] Verification pass: reviewing characters against text');
+    const verifyBudget = contextWindow
+      ? computeTextBudget(contextWindow, 4096, buildVerificationPrompt(characters, ''))
+      : 80_000;
     const { result: verifyResult, rateLimitWaitMs: rlVerify } = await callAndParseJSON<{ verdicts: Verdict[] }>(
       VERIFICATION_SYSTEM,
-      buildVerificationPrompt(characters, text),
+      buildVerificationPrompt(characters, text, verifyBudget),
       config, 'char-verify', undefined, contextWindow,
     );
     totalRateLimitMs += rlVerify;
@@ -1515,7 +1519,11 @@ async function runMultiPassFull(
       totalRateLimitMs += rl;
       return result;
     };
-    reconciled = await reconcileResult(assembled, bookTitle, bookAuthor, text.slice(0, 15_000), callAndParse);
+    // Compute text budget for reconciliation excerpts
+    const reconcileExcerptBudget = contextWindow
+      ? computeTextBudget(contextWindow, 4096, buildCharReconcilePrompt(bookTitle, bookAuthor, assembled.characters))
+      : 15_000;
+    reconciled = await reconcileResult(assembled, bookTitle, bookAuthor, text.slice(0, reconcileExcerptBudget), callAndParse);
     console.log(`[analyze] Reconciliation complete: ${reconciled.characters.length} chars, ${reconciled.locations?.length ?? 0} locs`);
   }
 
@@ -1559,9 +1567,12 @@ async function runMultiPassDelta(
   // LLM verification pass for delta characters (cloud models only)
   if (config.provider !== 'ollama' && deltaChars.length > 0) {
     console.log('[analyze] Verification pass: reviewing delta characters against text');
+    const verifyBudget = contextWindow
+      ? computeTextBudget(contextWindow, 4096, buildVerificationPrompt(deltaChars, ''))
+      : 80_000;
     const { result: verifyResult, rateLimitWaitMs: rlVerify } = await callAndParseJSON<{ verdicts: Verdict[] }>(
       VERIFICATION_SYSTEM,
-      buildVerificationPrompt(deltaChars, text),
+      buildVerificationPrompt(deltaChars, text, verifyBudget),
       config, 'char-verify-delta', undefined, contextWindow,
     );
     totalRateLimitMs += rlVerify;

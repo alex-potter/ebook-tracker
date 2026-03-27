@@ -1,4 +1,5 @@
 import type { AnalysisResult, Character, LocationInfo, NarrativeArc } from '@/types';
+import { levenshtein } from '@/lib/ai-shared';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -142,6 +143,123 @@ export function computeNameOverlaps(
   return results.slice(0, maxPairs).map((r) => r.overlap);
 }
 
+// ─── String-based duplicate detection ────────────────────────────────────────
+
+export function findStringDuplicates(
+  entities: Array<{ name: string; aliases?: string[] }>,
+  entityType: 'characters' | 'locations' | 'arcs',
+): ReconcileProposals {
+  // Stage 1 — Collect pairwise matches
+  const overlapResults = computeNameOverlaps(entities, 9999);
+  const pairKey = (a: number, b: number) => `${Math.min(a, b)}:${Math.max(a, b)}`;
+  const pairs = new Map<string, { a: number; b: number; strength: number; reason: string }>();
+
+  for (const o of overlapResults) {
+    const strength = o.reason.startsWith('exact') ? 3 : o.reason.startsWith('name') ? 2 : 1;
+    pairs.set(pairKey(o.indexA, o.indexB), { a: o.indexA, b: o.indexB, strength, reason: o.reason });
+  }
+
+  // Levenshtein pass
+  const namesSets = entities.map((e) => {
+    const names = [e.name, ...(e.aliases ?? [])];
+    return names.map((n) => n.toLowerCase());
+  });
+
+  for (let a = 0; a < entities.length; a++) {
+    for (let b = a + 1; b < entities.length; b++) {
+      const key = pairKey(a, b);
+      if (pairs.has(key)) continue;
+
+      let found = false;
+      for (const na of namesSets[a]) {
+        if (found) break;
+        for (const nb of namesSets[b]) {
+          if (na.length >= 5 && nb.length >= 5 && na[0] === nb[0] && levenshtein(na, nb) <= 2) {
+            pairs.set(key, { a, b, strength: 2, reason: `similar names "${na}" ≈ "${nb}"` });
+            found = true;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  if (pairs.size === 0) return { entityType, merges: [], splits: [] };
+
+  // Stage 2 — Union-Find grouping
+  const parent = entities.map((_, i) => i);
+  const rank = new Array(entities.length).fill(0);
+
+  function find(x: number): number {
+    while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; }
+    return x;
+  }
+  function union(x: number, y: number) {
+    const rx = find(x), ry = find(y);
+    if (rx === ry) return;
+    if (rank[rx] < rank[ry]) parent[rx] = ry;
+    else if (rank[rx] > rank[ry]) parent[ry] = rx;
+    else { parent[ry] = rx; rank[rx]++; }
+  }
+
+  for (const { a, b } of pairs.values()) union(a, b);
+
+  const groups = new Map<number, number[]>();
+  for (let i = 0; i < entities.length; i++) {
+    const root = find(i);
+    if (!groups.has(root)) groups.set(root, []);
+    groups.get(root)!.push(i);
+  }
+
+  // Stage 3 — Pick primary per group, build proposals
+  const merges: MergeProposal[] = [];
+
+  for (const members of groups.values()) {
+    if (members.length < 2) continue;
+
+    // Primary: most aliases → longest name → lowest index
+    members.sort((x, y) => {
+      const aliasCountDiff = (entities[y].aliases?.length ?? 0) - (entities[x].aliases?.length ?? 0);
+      if (aliasCountDiff !== 0) return aliasCountDiff;
+      const nameLenDiff = entities[y].name.length - entities[x].name.length;
+      if (nameLenDiff !== 0) return nameLenDiff;
+      return x - y;
+    });
+
+    const primaryIdx = members[0];
+    const absorbIdx = members.slice(1);
+
+    // Combined aliases: all names/aliases in group, excluding primary name
+    const primaryNameLower = entities[primaryIdx].name.toLowerCase();
+    const allNames = new Set<string>();
+    for (const idx of members) {
+      for (const n of [entities[idx].name, ...(entities[idx].aliases ?? [])]) {
+        if (n.toLowerCase() !== primaryNameLower) allNames.add(n);
+      }
+    }
+
+    // Best reason from constituent pairs
+    let bestStrength = 0;
+    let bestReason = '';
+    for (const p of pairs.values()) {
+      const pa = find(p.a), pb = find(p.b);
+      if (pa === find(primaryIdx) || pb === find(primaryIdx)) {
+        if (p.strength > bestStrength) { bestStrength = p.strength; bestReason = p.reason; }
+      }
+    }
+
+    merges.push({
+      id: crypto.randomUUID(),
+      primaryName: entities[primaryIdx].name,
+      absorbedNames: absorbIdx.map((i) => entities[i].name),
+      reason: bestReason,
+      combinedAliases: [...allNames],
+    });
+  }
+
+  return { entityType, merges, splits: [] };
+}
+
 // ─── Prompts ────────────────────────────────────────────────────────────────
 
 export const CHAR_RECONCILE_SYSTEM = `You are a literary data quality analyst. You review character lists extracted from books and identify duplicates (same person listed under different names) and incorrect merges (distinct people incorrectly combined into one entry).
@@ -214,7 +332,7 @@ export const LOC_RECONCILE_SCHEMA = `{
 // ─── Prompt builders ────────────────────────────────────────────────────────
 
 export function buildCharReconcilePrompt(
-  bookTitle: string, bookAuthor: string, characters: Character[], chapterExcerpts?: string,
+  bookTitle: string, bookAuthor: string, characters: Character[], chapterExcerpts?: string, maxExcerptChars?: number,
 ): string {
   const charBlock = characters.map((c, i) => {
     const rels = c.relationships?.length
@@ -231,7 +349,7 @@ export function buildCharReconcilePrompt(
   }).join('\n\n');
 
   const textSection = chapterExcerpts
-    ? `\nRECENT CHAPTER TEXT (use to verify whether character names actually appear in the book):\n${chapterExcerpts.slice(0, 15_000)}\n`
+    ? `\nRECENT CHAPTER TEXT (use to verify whether character names actually appear in the book):\n${chapterExcerpts.slice(0, maxExcerptChars ?? 15_000)}\n`
     : '';
 
   const overlaps = computeNameOverlaps(characters);
@@ -256,7 +374,7 @@ ${CHAR_RECONCILE_SCHEMA}`;
 }
 
 export function buildLocReconcilePrompt(
-  bookTitle: string, bookAuthor: string, locations: LocationInfo[], characters: Character[], chapterExcerpts?: string,
+  bookTitle: string, bookAuthor: string, locations: LocationInfo[], characters: Character[], chapterExcerpts?: string, maxExcerptChars?: number,
 ): string {
   const locBlock = locations.map((l, i) => {
     const rels = l.relationships?.length
@@ -282,7 +400,7 @@ export function buildLocReconcilePrompt(
     .join('\n');
 
   const textSection = chapterExcerpts
-    ? `\nRECENT CHAPTER TEXT (use to verify whether location names actually appear in the book):\n${chapterExcerpts.slice(0, 15_000)}\n`
+    ? `\nRECENT CHAPTER TEXT (use to verify whether location names actually appear in the book):\n${chapterExcerpts.slice(0, maxExcerptChars ?? 15_000)}\n`
     : '';
 
   const overlaps = computeNameOverlaps(locations);
