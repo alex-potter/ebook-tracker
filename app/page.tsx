@@ -1774,6 +1774,7 @@ export default function Home() {
                   locationAliasMap={derived.locationAliasMap}
                   locationGroups={derived.locationGroups}
                   currentChapterIndex={currentChapterIndex}
+                  parentArcs={stored?.parentArcs}
                   onMapStateChange={(state) => {
                     setMapState(state);
                     saveMapState(book.title, book.author, state);

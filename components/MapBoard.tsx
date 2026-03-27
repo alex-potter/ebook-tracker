@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { AnalysisResult, Character, LocationInfo, LocationPin, MapState, NarrativeArc, PinUpdates, Snapshot } from '@/types';
+import type { AnalysisResult, Character, LocationInfo, LocationPin, MapState, NarrativeArc, ParentArc, PinUpdates, Snapshot } from '@/types';
 import type { SnapshotTransform } from '@/lib/propagate-edit';
 import SubwayMap from './SubwayMap';
 import CharacterModal from './CharacterModal';
@@ -23,6 +23,7 @@ interface Props {
   locationAliasMap?: Map<string, string>;
   locationGroups?: LocationGroup[];
   currentChapterIndex?: number;
+  parentArcs?: ParentArc[];
 }
 
 const ARC_STATUS_DOT: Record<NarrativeArc['status'], string> = {
@@ -111,7 +112,7 @@ function charImportanceColor(importance: Character['importance']): string {
   return importance === 'main' ? '#f59e0b' : importance === 'secondary' ? '#3b82f6' : '#71717a';
 }
 
-export default function MapBoard({ characters, arcs = [], locationInfos = [], bookTitle, mapState, onMapStateChange, snapshots = [], currentResult, onResultEdit, resolvedCharacters: resolvedCharsProp, locationAliasMap: aliasMapProp, locationGroups: groupsProp, currentChapterIndex }: Props) {
+export default function MapBoard({ characters, arcs = [], locationInfos = [], bookTitle, mapState, onMapStateChange, snapshots = [], currentResult, onResultEdit, resolvedCharacters: resolvedCharsProp, locationAliasMap: aliasMapProp, locationGroups: groupsProp, currentChapterIndex, parentArcs }: Props) {
   const [placingLocation, setPlacingLocation] = useState<string | null>(null);
   const [activePin, setActivePin] = useState<string | null>(null);
   const [activeCharPin, setActiveCharPin] = useState<string | null>(null);
@@ -476,7 +477,7 @@ export default function MapBoard({ characters, arcs = [], locationInfos = [], bo
       >
         {/* Subway map fills full height */}
         <div className="h-full bg-white dark:bg-zinc-900">
-          <SubwayMap snapshots={currentChapterIndex != null ? (snapshots ?? []).filter((s) => s.index <= currentChapterIndex) : snapshots} currentCharacters={displayedChars} currentLocations={currentResult?.locations} locationMergeMap={showOnlyRoots ? locationMergeMap : undefined} locationAliasMap={aliasMapProp} onCharacterClick={setSelectedCharName} onLocationClick={setSelectedLocationName} onArcClick={setSelectedArcName} />
+          <SubwayMap snapshots={currentChapterIndex != null ? (snapshots ?? []).filter((s) => s.index <= currentChapterIndex) : snapshots} currentCharacters={displayedChars} currentLocations={currentResult?.locations} locationMergeMap={showOnlyRoots ? locationMergeMap : undefined} locationAliasMap={aliasMapProp} onCharacterClick={setSelectedCharName} onLocationClick={setSelectedLocationName} onArcClick={setSelectedArcName} parentArcs={parentArcs} />
         </div>
 
         {/* Top-level only toggle — top-right overlay */}

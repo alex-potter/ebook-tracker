@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import type { Character, LocationInfo, Snapshot } from '@/types';
+import type { Character, LocationInfo, ParentArc, Snapshot } from '@/types';
 import { withResolvedLocations, buildLocationAliasMap, resolveLocationName } from '@/lib/resolve-locations';
 
 /* ── Types ────────────────────────────────────────────────────────────── */
@@ -146,7 +146,7 @@ function isRealLocation(loc: string | undefined): loc is string {
   return t.length > 0 && !FAKE_LOC_RE.test(t);
 }
 
-function buildGraph(snapshots: Snapshot[], locationMergeMap?: Map<string, string>, currentLocations?: LocationInfo[], prebuiltAliasMap?: Map<string, string>): { nodes: Node[]; edges: Edge[]; arcLanes: ArcLane[]; maxChapter: number } {
+function buildGraph(snapshots: Snapshot[], locationMergeMap?: Map<string, string>, currentLocations?: LocationInfo[], prebuiltAliasMap?: Map<string, string>, parentArcs?: ParentArc[]): { nodes: Node[]; edges: Edge[]; arcLanes: ArcLane[]; maxChapter: number } {
   const sorted = [...snapshots].sort((a, b) => a.index - b.index);
   if (sorted.length === 0) return { nodes: [], edges: [], arcLanes: [], maxChapter: 0 };
 
@@ -224,6 +224,21 @@ function buildGraph(snapshots: Snapshot[], locationMergeMap?: Map<string, string
   const nodeIds = new Set<string>();
   for (const e of edges) { nodeIds.add(e.source); nodeIds.add(e.target); }
   for (const loc of allLocs) nodeIds.add(loc);
+
+  // Remap locArc values to parent arc names when parentArcs are available
+  if (parentArcs?.length) {
+    const childToParent = new Map<string, string>();
+    for (const pa of parentArcs) {
+      for (const child of pa.children) childToParent.set(child.toLowerCase(), pa.name);
+    }
+    const parentLocArc = new Map<string, string>();
+    for (const [loc, arcName] of locArc) {
+      const parentName = childToParent.get(arcName.toLowerCase());
+      parentLocArc.set(loc, parentName ?? arcName);
+    }
+    locArc.clear();
+    for (const [k, v] of parentLocArc) locArc.set(k, v);
+  }
 
   // Build arc lanes sorted by earliest first-appearance among each arc's locations
   const arcFirstChapter = new Map<string, number>();
@@ -498,9 +513,10 @@ interface Props {
   onCharacterClick?: (name: string) => void;
   onLocationClick?: (name: string) => void;
   onArcClick?: (arcName: string) => void;
+  parentArcs?: ParentArc[];
 }
 
-export default function SubwayMap({ snapshots, currentCharacters = [], currentLocations, locationMergeMap, locationAliasMap: aliasMapProp, onCharacterClick, onLocationClick, onArcClick }: Props) {
+export default function SubwayMap({ snapshots, currentCharacters = [], currentLocations, locationMergeMap, locationAliasMap: aliasMapProp, onCharacterClick, onLocationClick, onArcClick, parentArcs }: Props) {
   const [charSearch, setCharSearch] = useState('');
   const [isDark, setIsDark] = useState(() =>
     typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
@@ -513,7 +529,7 @@ export default function SubwayMap({ snapshots, currentCharacters = [], currentLo
     obs.observe(document.documentElement, { attributeFilter: ['class'] });
     return () => obs.disconnect();
   }, []);
-  const [graph, setGraph] = useState<{ nodes: Node[]; edges: Edge[]; arcLanes: ArcLane[]; maxChapter: number }>(() => buildGraph(snapshots, locationMergeMap, currentLocations, aliasMapProp));
+  const [graph, setGraph] = useState<{ nodes: Node[]; edges: Edge[]; arcLanes: ArcLane[]; maxChapter: number }>(() => buildGraph(snapshots, locationMergeMap, currentLocations, aliasMapProp, parentArcs));
   const [settled, setSettled] = useState(false);
   const frameRef = useRef<number>(0);
 
@@ -534,9 +550,9 @@ export default function SubwayMap({ snapshots, currentCharacters = [], currentLo
 
   // Rebuild graph structure when snapshots, merge map, or current locations change
   useEffect(() => {
-    setGraph(buildGraph(snapshots, locationMergeMap, currentLocations, aliasMapProp));
+    setGraph(buildGraph(snapshots, locationMergeMap, currentLocations, aliasMapProp, parentArcs));
     setSettled(false);
-  }, [snapshots, locationMergeMap, currentLocations, aliasMapProp]);
+  }, [snapshots, locationMergeMap, currentLocations, aliasMapProp, parentArcs]);
 
   useEffect(() => {
     if (settled) return;
