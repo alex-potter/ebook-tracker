@@ -1436,6 +1436,9 @@ async function runPassWithSplitting<T>(
         const existing = accumulated[key];
         if (Array.isArray(val) && Array.isArray(existing)) {
           accumulated[key] = [...existing, ...val];
+        } else if (typeof val === 'string' && typeof existing === 'string') {
+          // Concatenate string fields (e.g. summary) across chunks
+          accumulated[key] = existing + ' ' + val;
         } else if (val !== undefined && existing === undefined) {
           accumulated[key] = val;
         }
