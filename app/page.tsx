@@ -212,7 +212,7 @@ async function analyzeChapter(
   chapter: { title: string; text: string },
   previousResult: AnalysisResult | null,
   allChapterTitles?: string[],
-): Promise<{ result: AnalysisResult; model: string }> {
+): Promise<{ result: AnalysisResult; model: string; rateLimitWaitMs?: number }> {
   if (IS_MOBILE) {
     const { analyzeChapterClient } = await import('@/lib/ai-client');
     const result = await analyzeChapterClient(bookTitle, bookAuthor, chapter, previousResult);
@@ -242,10 +242,10 @@ async function analyzeChapter(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const data = await res.json() as AnalysisResult & { _model?: string };
+  const data = await res.json() as AnalysisResult & { _model?: string; _rateLimitWaitMs?: number };
   if (!res.ok) throw new Error((data as unknown as { error?: string }).error ?? 'Analysis failed.');
-  const { _model, ...result } = data;
-  return { result: result as AnalysisResult, model: _model ?? 'unknown' };
+  const { _model, _rateLimitWaitMs, ...result } = data;
+  return { result: result as AnalysisResult, model: _model ?? 'unknown', rateLimitWaitMs: _rateLimitWaitMs };
 }
 
 async function reconcileResult(
@@ -336,6 +336,85 @@ async function maybeGenerateParentArcs(
   }
 }
 
+function SetupPrompt({ onComplete, onOpenSettings }: { onComplete: () => void; onOpenSettings: () => void }) {
+  const [key, setKey] = useState('');
+  const [testing, setTesting] = useState(false);
+  const [error, setError] = useState('');
+  const [guideOpen, setGuideOpen] = useState(false);
+
+  async function handleTestAndSave() {
+    if (!key.trim()) return;
+    setTesting(true);
+    setError('');
+    try {
+      const { saveAiSettings, testConnection } = await import('@/lib/ai-client');
+      const settings = {
+        provider: 'gemini' as const,
+        anthropicKey: '', ollamaUrl: 'http://localhost:11434/v1', model: 'gemini-2.0-flash',
+        geminiKey: key.trim(),
+        openaiCompatibleUrl: '', openaiCompatibleKey: '', openaiCompatibleName: '',
+      };
+      await testConnection(settings);
+      saveAiSettings(settings);
+      onComplete();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Connection failed');
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center flex-1 text-center gap-4 px-4">
+      <div className="bg-white dark:bg-zinc-900 border border-stone-200 dark:border-zinc-800 rounded-2xl p-6 max-w-md w-full space-y-4">
+        <h3 className="font-bold text-stone-900 dark:text-zinc-100 text-sm">Set up an AI provider to analyze this book</h3>
+        <div className="text-left space-y-2">
+          <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">Recommended: Google Gemini (free)</p>
+          <p className="text-xs text-stone-500 dark:text-zinc-400">Get a free API key in ~60 seconds — no credit card required.</p>
+        </div>
+        <button
+          onClick={() => setGuideOpen(!guideOpen)}
+          className="text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors w-full text-left"
+        >
+          {guideOpen ? '\u25be' : '\u25b8'} Step-by-step guide
+        </button>
+        {guideOpen && (
+          <ol className="text-xs text-stone-500 dark:text-zinc-400 space-y-1 list-decimal list-inside text-left">
+            <li>Go to <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-amber-600 dark:text-amber-400 hover:underline">Google AI Studio</a></li>
+            <li>Sign in with your Google account</li>
+            <li>Click &quot;Create API Key&quot;</li>
+            <li>Copy the key and paste it below</li>
+          </ol>
+        )}
+        <div className="flex gap-2">
+          <input
+            type="password"
+            value={key}
+            onChange={(e) => { setKey(e.target.value); setError(''); }}
+            placeholder="Paste Gemini API key"
+            className="flex-1 bg-stone-100 dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-stone-800 dark:text-zinc-200 focus:outline-none focus:border-amber-500/50"
+            onKeyDown={(e) => e.key === 'Enter' && handleTestAndSave()}
+          />
+          <button
+            onClick={handleTestAndSave}
+            disabled={testing || !key.trim()}
+            className="px-4 py-2 text-sm font-medium rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-40 transition-colors whitespace-nowrap"
+          >
+            {testing ? 'Testing...' : 'Test & Save'}
+          </button>
+        </div>
+        {error && <p className="text-xs text-red-500">{error}</p>}
+        <button
+          onClick={onOpenSettings}
+          className="text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
+        >
+          Other providers
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [isDark, setIsDark] = useState(true);
 
@@ -424,6 +503,7 @@ export default function Home() {
   const [chapterRange, setChapterRangeState] = useState<{ start: number; end: number } | null>(null);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [mapState, setMapState] = useState<MapState | null>(null);
+  const [showSetupPrompt, setShowSetupPrompt] = useState(false);
 
   function toggleBook(bookIndex: number) {
     setExcludedBooks((prev) => {
@@ -992,6 +1072,20 @@ export default function Home() {
 
   const handleAnalyze = useCallback(async () => {
     if (!book || needsSetup) return;
+
+    // Pre-flight: check if provider is configured
+    const { loadAiSettings } = await import('@/lib/ai-client');
+    const settings = loadAiSettings();
+    const hasCredentials =
+      (settings.provider === 'anthropic' && settings.anthropicKey) ||
+      (settings.provider === 'ollama' && settings.ollamaUrl) ||
+      (settings.provider === 'gemini' && settings.geminiKey) ||
+      (settings.provider === 'openai-compatible' && settings.openaiCompatibleUrl);
+    if (!hasCredentials) {
+      setShowSetupPrompt(true);
+      return;
+    }
+
     analyzeCancelRef.current = false;
     setAnalyzing(true);
     setAnalyzeError(null);
@@ -1018,7 +1112,10 @@ export default function Home() {
         const i = toAnalyze[step];
         const ch = book.chapters[i];
         setRebuildProgress({ current: step + 1, total, chapterTitle: ch.title, chapterIndex: i });
-        const { result: chapterResult, model: chapterModel } = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated, book.chapters.map((c) => c.title));
+        const { result: chapterResult, model: chapterModel, rateLimitWaitMs } = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated, book.chapters.map((c) => c.title));
+        if (rateLimitWaitMs) {
+          setRebuildProgress((prev) => prev ? { ...prev, chapterTitle: `${ch.title} (rate limit: waited ${Math.ceil(rateLimitWaitMs / 1000)}s)` } : prev);
+        }
         accumulated = chapterResult;
         snapshots = upsertSnapshot(snapshots, i, accumulated, chapterModel, APP_VERSION);
         const partial: StoredBookState = { ...analyzeBase, lastAnalyzedIndex: i, result: accumulated, snapshots };
@@ -1429,7 +1526,7 @@ export default function Home() {
 
   return (
     <main className="h-screen flex flex-col overflow-hidden">
-      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {showSettings && <SettingsModal onClose={() => { setShowSettings(false); setShowSetupPrompt(false); }} />}
       {showTimeline && book && (
         <StoryTimeline
           snapshots={stored?.snapshots ?? []}
@@ -1810,6 +1907,13 @@ export default function Home() {
                       : "Only what you've read is sent to the model — no spoilers."}
                   </p>
                 </div>
+              )}
+
+              {showSetupPrompt && (
+                <SetupPrompt
+                  onComplete={() => { setShowSetupPrompt(false); handleAnalyze(); }}
+                  onOpenSettings={() => { setShowSetupPrompt(false); setShowSettings(true); }}
+                />
               )}
 
               {(analyzing || rebuilding) && rebuildProgress && (
