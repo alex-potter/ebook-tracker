@@ -1,15 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
-import { Agent, fetch as undiciFetch } from 'undici';
 import type { AnalysisResult } from '@/types';
 import { reconcileResult, computeNameOverlaps, updateArcReferences, type CallAndParseFn } from '@/lib/reconcile';
 import { levenshtein } from '@/lib/ai-shared';
 import { escapeRegex, validateCharactersAgainstText, validateLocationsAgainstText } from '@/lib/validate-entities';
-
-// Undici agent with no headers/body timeout — our AbortController handles cancellation
-const ollamaAgent = new Agent({ headersTimeout: 0, bodyTimeout: 0 });
-
-const anthropic = new Anthropic();
+import { callLLM, resolveConfig, type LLMResult } from '@/lib/llm';
+import type { ProviderType } from '@/lib/rate-limiter';
 
 // Max chars of new chapter text to send in incremental mode
 const MAX_NEW_CHARS = 120_000;
@@ -1209,81 +1204,9 @@ function mergeDelta(
   };
 }
 
-// ─── LLM providers ───────────────────────────────────────────────────────────
+// ─── LLM config type ─────────────────────────────────────────────────────────
 
-async function callAnthropic(system: string, userPrompt: string, opts: { apiKey?: string; model?: string } = {}): Promise<string> {
-  const client = opts.apiKey ? new Anthropic({ apiKey: opts.apiKey }) : anthropic;
-  const model = opts.model ?? 'claude-haiku-4-5-20251001';
-  let fullText = '';
-
-  // Continuation loop: if the response hits max_tokens, prefill the assistant
-  // turn with what we have so far and let the model continue where it left off.
-  for (let pass = 0; pass < 5; pass++) {
-    const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [
-      { role: 'user', content: userPrompt },
-    ];
-    if (fullText) {
-      messages.push({ role: 'assistant', content: fullText });
-    }
-
-    const response = await client.messages.create({
-      model,
-      max_tokens: 16384,
-      temperature: 0,
-      system,
-      messages,
-    });
-
-    const block = response.content.find((b) => b.type === 'text');
-    if (!block || block.type !== 'text') break;
-    fullText += block.text;
-
-    if (response.stop_reason !== 'max_tokens') break;
-    console.log(`[analyze] Response hit max_tokens, continuing (pass ${pass + 1})…`);
-  }
-
-  if (!fullText) throw new Error('No text response from Anthropic.');
-  return fullText;
-}
-
-async function callLocal(system: string, userPrompt: string, opts: { baseUrl?: string; model?: string } = {}, maxTokens = 16384): Promise<string> {
-  const baseUrl = opts.baseUrl ?? process.env.LOCAL_MODEL_URL ?? 'http://localhost:11434/v1';
-  const model = opts.model ?? process.env.LOCAL_MODEL_NAME ?? 'llama3.1:8b';
-
-  const res = await undiciFetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    dispatcher: ollamaAgent,
-    body: JSON.stringify({
-      model,
-      temperature: 0,
-      max_tokens: maxTokens,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: userPrompt },
-      ],
-    }),
-  } as Parameters<typeof undiciFetch>[1]);
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Local model error (${res.status}): ${err}`);
-  }
-
-  const data = await res.json() as { choices?: { message?: { content?: string } }[] };
-  const text = data.choices?.[0]?.message?.content;
-  if (!text) throw new Error('No content in local model response.');
-  return text;
-}
-
-type CallOpts = { baseUrl?: string; model?: string } | { apiKey?: string; model?: string };
-
-async function callLLM(system: string, userPrompt: string, useLocal: boolean, callOpts: CallOpts, maxTokens?: number): Promise<string> {
-  return useLocal
-    ? callLocal(system, userPrompt, callOpts as { baseUrl?: string; model?: string }, maxTokens)
-    : callAnthropic(system, userPrompt, callOpts as { apiKey?: string; model?: string });
-}
+type AnalyzeConfig = Omit<import('@/lib/llm').LLMCallConfig, 'system' | 'userPrompt' | 'maxTokens'>;
 
 /** Extract individual JSON objects from an array field in potentially truncated JSON. */
 function extractJsonArray(raw: string, fieldName: string): unknown[] {
@@ -1338,25 +1261,25 @@ function recoverPartialResponse(raw: string): Record<string, unknown> | null {
 async function callAndParseJSON<T>(
   system: string,
   userPrompt: string,
-  useLocal: boolean,
-  callOpts: CallOpts,
+  config: AnalyzeConfig,
   label: string,
   maxTokens?: number,
-): Promise<T | null> {
+): Promise<{ result: T | null; rateLimitWaitMs: number }> {
+  let totalRateLimitMs = 0;
   for (let attempt = 0; attempt < 2; attempt++) {
-    const raw = await callLLM(system, userPrompt, useLocal, callOpts, maxTokens);
+    const { text: raw, rateLimitWaitMs } = await callLLM({ ...config, system, userPrompt, maxTokens: maxTokens ?? 16384, jsonMode: true });
+    if (rateLimitWaitMs) totalRateLimitMs += rateLimitWaitMs;
     let cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
     const firstBrace = cleaned.indexOf('{');
     const lastBrace = cleaned.lastIndexOf('}');
     if (firstBrace >= 0 && lastBrace > firstBrace) cleaned = cleaned.slice(firstBrace, lastBrace + 1);
     try {
-      return JSON.parse(cleaned) as T;
+      return { result: JSON.parse(cleaned) as T, rateLimitWaitMs: totalRateLimitMs };
     } catch {
-      // Try partial JSON recovery (handles truncated responses)
       const recovered = recoverPartialResponse(cleaned);
       if (recovered && Object.keys(recovered).length > 0) {
         console.log(`[analyze] ${label}: recovered partial JSON (keys: ${Object.keys(recovered).join(', ')})`);
-        return recovered as T;
+        return { result: recovered as T, rateLimitWaitMs: totalRateLimitMs };
       }
       if (attempt === 0) {
         console.warn(`[analyze] ${label}: parse failed, retrying…`);
@@ -1365,7 +1288,7 @@ async function callAndParseJSON<T>(
       }
     }
   }
-  return null;
+  return { result: null, rateLimitWaitMs: totalRateLimitMs };
 }
 
 // ─── Multi-pass analysis ──────────────────────────────────────────────────────
@@ -1396,18 +1319,20 @@ async function runMultiPassFull(
   chapterTitle: string,
   text: string,
   allChapterTitles: string[] | undefined,
-  useLocal: boolean,
-  callOpts: CallOpts,
-): Promise<AnalysisResult> {
+  config: AnalyzeConfig,
+): Promise<{ result: AnalysisResult; totalRateLimitMs: number }> {
+  let totalRateLimitMs = 0;
+
   // Pass 1: Characters
   console.log('[analyze] Pass 1: characters');
-  const charSystem = useLocal ? CHARACTERS_SYSTEM_LOCAL : CHARACTERS_SYSTEM;
-  const charSchema = useLocal ? CHARACTER_SCHEMA_LOCAL : CHARACTER_SCHEMA;
-  const charsResult = await callAndParseJSON<{ characters?: AnalysisResult['characters'] }>(
+  const charSystem = config.provider === 'ollama' ? CHARACTERS_SYSTEM_LOCAL : CHARACTERS_SYSTEM;
+  const charSchema = config.provider === 'ollama' ? CHARACTER_SCHEMA_LOCAL : CHARACTER_SCHEMA;
+  const { result: charsResult, rateLimitWaitMs: rlChars } = await callAndParseJSON<{ characters?: AnalysisResult['characters'] }>(
     charSystem,
     buildCharactersFullPrompt(bookTitle, bookAuthor, chapterTitle, text, charSchema),
-    useLocal, callOpts, 'characters-full', useLocal ? 16384 : undefined,
+    config, 'characters-full', config.provider === 'ollama' ? 16384 : undefined,
   );
+  totalRateLimitMs += rlChars;
   let characters = charsResult?.characters ?? [];
   characters = sanitizeCharacterAliases(characters);
   const charDedup = deduplicateCharacters(characters);
@@ -1421,13 +1346,14 @@ async function runMultiPassFull(
   characters = groundedChars;
 
   // LLM verification pass: review extracted characters against source text (cloud models only)
-  if (!useLocal && characters.length > 0) {
+  if (config.provider !== 'ollama' && characters.length > 0) {
     console.log('[analyze] Verification pass: reviewing characters against text');
-    const verifyResult = await callAndParseJSON<{ verdicts: Verdict[] }>(
+    const { result: verifyResult, rateLimitWaitMs: rlVerify } = await callAndParseJSON<{ verdicts: Verdict[] }>(
       VERIFICATION_SYSTEM,
       buildVerificationPrompt(characters, text),
-      useLocal, callOpts, 'char-verify',
+      config, 'char-verify',
     );
+    totalRateLimitMs += rlVerify;
     if (verifyResult?.verdicts?.length) {
       const beforeCount = characters.length;
       characters = applyVerificationVerdicts([...characters], verifyResult.verdicts);
@@ -1439,13 +1365,14 @@ async function runMultiPassFull(
 
   // Pass 2: Locations + summary
   console.log('[analyze] Pass 2: locations');
-  const locSystem = useLocal ? LOCATIONS_SYSTEM_LOCAL : LOCATIONS_SYSTEM;
-  const locSchema = useLocal ? LOCATION_SCHEMA_LOCAL : LOCATION_SCHEMA;
-  const locsResult = await callAndParseJSON<LocResult>(
+  const locSystem = config.provider === 'ollama' ? LOCATIONS_SYSTEM_LOCAL : LOCATIONS_SYSTEM;
+  const locSchema = config.provider === 'ollama' ? LOCATION_SCHEMA_LOCAL : LOCATION_SCHEMA;
+  const { result: locsResult, rateLimitWaitMs: rlLocs } = await callAndParseJSON<LocResult>(
     locSystem,
     buildLocationsFullPrompt(bookTitle, bookAuthor, chapterTitle, characters, text, allChapterTitles, locSchema),
-    useLocal, callOpts, 'locations-full', useLocal ? 8192 : undefined,
+    config, 'locations-full', config.provider === 'ollama' ? 8192 : undefined,
   );
+  totalRateLimitMs += rlLocs;
   const rawLocations = locsResult?.locations ?? [];
   const summary = locsResult?.summary ?? '';
   console.log(`[analyze] Pass 2 done: ${rawLocations.length} locations`);
@@ -1457,12 +1384,13 @@ async function runMultiPassFull(
 
   // Pass 3: Arcs (with full character + location context)
   console.log('[analyze] Pass 3: arcs');
-  const arcSystem = useLocal ? ARCS_SYSTEM_LOCAL : ARCS_SYSTEM;
-  const arcsResult = await callAndParseJSON<{ arcs?: AnalysisResult['arcs'] }>(
+  const arcSystem = config.provider === 'ollama' ? ARCS_SYSTEM_LOCAL : ARCS_SYSTEM;
+  const { result: arcsResult, rateLimitWaitMs: rlArcs } = await callAndParseJSON<{ arcs?: AnalysisResult['arcs'] }>(
     arcSystem,
     buildArcsFullPrompt(bookTitle, bookAuthor, chapterTitle, text, characters, locations, allChapterTitles),
-    useLocal, callOpts, 'arcs-full', useLocal ? 4096 : undefined,
+    config, 'arcs-full', config.provider === 'ollama' ? 4096 : undefined,
   );
+  totalRateLimitMs += rlArcs;
   let arcs = arcsResult?.arcs ?? [];
   // Apply character nameMap to arc character lists, then dedup arcs
   if (charNameMap.size > 0) arcs = updateArcReferences(arcs, charNameMap) ?? arcs;
@@ -1479,7 +1407,7 @@ async function runMultiPassFull(
   // Auto-reconciliation: skip for local models when no name overlaps detected
   const charOverlaps = computeNameOverlaps(assembled.characters);
   const locOverlaps = computeNameOverlaps(assembled.locations ?? []);
-  const skipReconcile = useLocal && charOverlaps.length === 0 && locOverlaps.length === 0;
+  const skipReconcile = config.provider === 'ollama' && charOverlaps.length === 0 && locOverlaps.length === 0;
 
   let reconciled: AnalysisResult;
   if (skipReconcile) {
@@ -1487,8 +1415,11 @@ async function runMultiPassFull(
     reconciled = assembled;
   } else {
     console.log('[analyze] Auto-reconciliation pass');
-    const callAndParse: CallAndParseFn = <T>(system: string, userPrompt: string, label: string) =>
-      callAndParseJSON<T>(system, userPrompt, useLocal, callOpts, label, useLocal ? 4096 : undefined);
+    const callAndParse: CallAndParseFn = async <T>(system: string, userPrompt: string, label: string) => {
+      const { result, rateLimitWaitMs: rl } = await callAndParseJSON<T>(system, userPrompt, config, label, config.provider === 'ollama' ? 4096 : undefined);
+      totalRateLimitMs += rl;
+      return result;
+    };
     reconciled = await reconcileResult(assembled, bookTitle, bookAuthor, text.slice(0, 15_000), callAndParse);
     console.log(`[analyze] Reconciliation complete: ${reconciled.characters.length} chars, ${reconciled.locations?.length ?? 0} locs`);
   }
@@ -1496,7 +1427,7 @@ async function runMultiPassFull(
   // Final location dedup (catches any remaining duplicates after reconciliation)
   reconciled = { ...reconciled, locations: deduplicateLocations(reconciled.locations) };
 
-  return reconciled;
+  return { result: reconciled, totalRateLimitMs };
 }
 
 async function runMultiPassDelta(
@@ -1505,18 +1436,20 @@ async function runMultiPassDelta(
   chapterTitle: string,
   text: string,
   previousResult: AnalysisResult,
-  useLocal: boolean,
-  callOpts: CallOpts,
-): Promise<AnalysisResult> {
+  config: AnalyzeConfig,
+): Promise<{ result: AnalysisResult; totalRateLimitMs: number }> {
+  let totalRateLimitMs = 0;
+
   // Pass 1: Characters
   console.log('[analyze] Pass 1: characters (delta)');
-  const charSystem = useLocal ? CHARACTERS_SYSTEM_LOCAL : CHARACTERS_SYSTEM;
-  const charDeltaSchema = useLocal ? CHARACTER_DELTA_SCHEMA_LOCAL : CHARACTER_DELTA_SCHEMA;
-  const charsResult = await callAndParseJSON<CharDeltaResult>(
+  const charSystem = config.provider === 'ollama' ? CHARACTERS_SYSTEM_LOCAL : CHARACTERS_SYSTEM;
+  const charDeltaSchema = config.provider === 'ollama' ? CHARACTER_DELTA_SCHEMA_LOCAL : CHARACTER_DELTA_SCHEMA;
+  const { result: charsResult, rateLimitWaitMs: rlChars } = await callAndParseJSON<CharDeltaResult>(
     charSystem,
     buildCharactersDeltaPrompt(bookTitle, bookAuthor, chapterTitle, previousResult.characters, text, charDeltaSchema),
-    useLocal, callOpts, 'characters-delta', useLocal ? 8192 : undefined,
+    config, 'characters-delta', config.provider === 'ollama' ? 8192 : undefined,
   );
+  totalRateLimitMs += rlChars;
   // Text grounding: drop delta characters whose names don't appear in the new chapter text
   let deltaChars = charsResult?.updatedCharacters ?? [];
   deltaChars = sanitizeCharacterAliases(deltaChars);
@@ -1528,13 +1461,14 @@ async function runMultiPassDelta(
     deltaChars = validated;
   }
   // LLM verification pass for delta characters (cloud models only)
-  if (!useLocal && deltaChars.length > 0) {
+  if (config.provider !== 'ollama' && deltaChars.length > 0) {
     console.log('[analyze] Verification pass: reviewing delta characters against text');
-    const verifyResult = await callAndParseJSON<{ verdicts: Verdict[] }>(
+    const { result: verifyResult, rateLimitWaitMs: rlVerify } = await callAndParseJSON<{ verdicts: Verdict[] }>(
       VERIFICATION_SYSTEM,
       buildVerificationPrompt(deltaChars, text),
-      useLocal, callOpts, 'char-verify-delta',
+      config, 'char-verify-delta',
     );
+    totalRateLimitMs += rlVerify;
     if (verifyResult?.verdicts?.length) {
       const beforeCount = deltaChars.length;
       deltaChars = applyVerificationVerdicts([...deltaChars], verifyResult.verdicts);
@@ -1554,14 +1488,15 @@ async function runMultiPassDelta(
 
   // Pass 2: Locations + summary
   console.log('[analyze] Pass 2: locations (delta)');
-  const locSystem = useLocal ? LOCATIONS_SYSTEM_LOCAL : LOCATIONS_SYSTEM;
-  const locDeltaSchema = useLocal ? LOCATION_DELTA_SCHEMA_LOCAL : LOCATION_DELTA_SCHEMA;
-  const locsResult = await callAndParseJSON<LocDeltaResult>(
+  const locSystem = config.provider === 'ollama' ? LOCATIONS_SYSTEM_LOCAL : LOCATIONS_SYSTEM;
+  const locDeltaSchema = config.provider === 'ollama' ? LOCATION_DELTA_SCHEMA_LOCAL : LOCATION_DELTA_SCHEMA;
+  const { result: locsResult, rateLimitWaitMs: rlLocs } = await callAndParseJSON<LocDeltaResult>(
     locSystem,
     buildLocationsDeltaPrompt(bookTitle, bookAuthor, chapterTitle, currentCharacters, previousResult.locations, text, locDeltaSchema),
-    useLocal, callOpts, 'locations-delta', useLocal ? 8192 : undefined,
+    config, 'locations-delta', config.provider === 'ollama' ? 8192 : undefined,
   );
-  let deltaLocs = locsResult?.updatedLocations ?? [];
+  totalRateLimitMs += rlLocs;
+  const deltaLocs = locsResult?.updatedLocations ?? [];
   const { validated: groundedDeltaLocs, dropped: droppedDeltaLocs } = validateLocationsAgainstText(deltaLocs, text);
   if (droppedDeltaLocs.length) console.log(`[analyze] Dropped ${droppedDeltaLocs.length} ungrounded delta locations: ${droppedDeltaLocs.join(', ')}`);
   const locDelta = { updatedLocations: groundedDeltaLocs, summary: locsResult?.summary };
@@ -1571,12 +1506,13 @@ async function runMultiPassDelta(
 
   // Pass 3: Arcs (with full character + location context)
   console.log('[analyze] Pass 3: arcs (delta)');
-  const arcSystem = useLocal ? ARCS_SYSTEM_LOCAL : ARCS_SYSTEM;
-  const arcsResult = await callAndParseJSON<ArcDeltaResult>(
+  const arcSystem = config.provider === 'ollama' ? ARCS_SYSTEM_LOCAL : ARCS_SYSTEM;
+  const { result: arcsResult, rateLimitWaitMs: rlArcs } = await callAndParseJSON<ArcDeltaResult>(
     arcSystem,
     buildArcsDeltaPrompt(bookTitle, bookAuthor, chapterTitle, previousResult.arcs, currentCharacters, currentLocations, text),
-    useLocal, callOpts, 'arcs-delta', useLocal ? 4096 : undefined,
+    config, 'arcs-delta', config.provider === 'ollama' ? 4096 : undefined,
   );
+  totalRateLimitMs += rlArcs;
   const arcDelta = {
     updatedArcs: arcsResult?.updatedArcs,
     renamedArcs: arcsResult?.renamedArcs,
@@ -1598,7 +1534,7 @@ async function runMultiPassDelta(
   const hierarchicalLocations = labeledLocations ? inferParentLocations(labeledLocations) : labeledLocations;
 
   console.log(`[analyze] Delta complete: ${finalResult.characters.length} chars, ${finalResult.arcs?.length ?? 0} arcs, ${finalResult.locations?.length ?? 0} locs`);
-  return { ...finalResult, locations: hierarchicalLocations };
+  return { result: { ...finalResult, locations: hierarchicalLocations }, totalRateLimitMs };
 }
 
 // ─── Route handlers ───────────────────────────────────────────────────────────
@@ -1624,43 +1560,37 @@ export async function POST(req: NextRequest) {
       bookTitle: string;
       bookAuthor: string;
       previousResult?: AnalysisResult;
-      _provider?: 'anthropic' | 'ollama';
+      _provider?: 'anthropic' | 'ollama' | 'gemini' | 'openai-compatible';
       _apiKey?: string;
       _ollamaUrl?: string;
       _model?: string;
+      _geminiKey?: string;
+      _openaiCompatibleUrl?: string;
+      _openaiCompatibleKey?: string;
     };
-    const { chaptersRead, newChapters, allChapterTitles, currentChapterTitle, bookTitle, bookAuthor, previousResult,
-      _provider, _apiKey, _ollamaUrl, _model } = body;
+    const { chaptersRead, newChapters, allChapterTitles, currentChapterTitle, bookTitle, bookAuthor, previousResult } = body;
 
-    const serverHasKey = !!process.env.ANTHROPIC_API_KEY;
-    const serverUsesLocal = process.env.USE_LOCAL_MODEL === 'true';
-    const serverConfigured = serverHasKey || serverUsesLocal;
+    const config = resolveConfig(body);
 
-    const useLocal = serverConfigured ? serverUsesLocal : (_provider !== 'anthropic');
-    const callOpts: CallOpts = useLocal
-      ? { baseUrl: process.env.LOCAL_MODEL_URL ?? _ollamaUrl, model: process.env.LOCAL_MODEL_NAME ?? _model }
-      : { apiKey: process.env.ANTHROPIC_API_KEY ?? _apiKey, model: _model };
-
-    if (!useLocal && !(callOpts as { apiKey?: string }).apiKey) {
+    if (config.provider !== 'ollama' && !config.apiKey) {
       return NextResponse.json(
-        { error: 'No Anthropic API key configured. Open ⚙ Settings to add your key.' },
+        { error: 'No API key configured. Open Settings to add your key.' },
         { status: 400 },
       );
     }
 
-    const isDelta = !!(previousResult && newChapters?.length);
-    const modelName = useLocal
-      ? ((callOpts as { model?: string }).model ?? process.env.LOCAL_MODEL_NAME ?? 'qwen2.5:14b')
-      : ((callOpts as { model?: string }).model ?? 'claude-haiku-4-5-20251001');
+    const modelName = config.model;
 
+    const isDelta = !!(previousResult && newChapters?.length);
     let result: AnalysisResult;
+    let totalRateLimitMs = 0;
 
     if (isDelta) {
       const newText = newChapters!
         .map((ch) => `=== ${ch.title} ===\n\n${ch.text}`)
         .join('\n\n---\n\n');
       const truncatedNew = newText.length > MAX_NEW_CHARS ? newText.slice(-MAX_NEW_CHARS) : newText;
-      result = await runMultiPassDelta(bookTitle, bookAuthor, currentChapterTitle, truncatedNew, previousResult!, useLocal, callOpts);
+      ({ result, totalRateLimitMs } = await runMultiPassDelta(bookTitle, bookAuthor, currentChapterTitle, truncatedNew, previousResult!, config));
     } else {
       if (!chaptersRead?.length) {
         return NextResponse.json({ error: 'No chapter text provided.' }, { status: 400 });
@@ -1674,10 +1604,10 @@ export async function POST(req: NextRequest) {
         const tail = fullText.slice(-(MAX_CHARS - HEAD_CHARS));
         return `${head}\n\n[... middle chapters omitted to fit context ...]\n\n${tail}`;
       })();
-      result = await runMultiPassFull(bookTitle, bookAuthor, currentChapterTitle, truncated, allChapterTitles, useLocal, callOpts);
+      ({ result, totalRateLimitMs } = await runMultiPassFull(bookTitle, bookAuthor, currentChapterTitle, truncated, allChapterTitles, config));
     }
 
-    return NextResponse.json({ ...result, _model: modelName });
+    return NextResponse.json({ ...result, _model: modelName, _rateLimitWaitMs: totalRateLimitMs || undefined });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[analyze] error:', err);
