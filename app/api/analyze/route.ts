@@ -4,13 +4,8 @@ import { reconcileResult, computeNameOverlaps, updateArcReferences, type CallAnd
 import { levenshtein } from '@/lib/ai-shared';
 import { escapeRegex, validateCharactersAgainstText, validateLocationsAgainstText } from '@/lib/validate-entities';
 import { callLLM, resolveConfig, type LLMResult } from '@/lib/llm';
+import { getContextWindow, splitChapterText, computeTextBudget } from '@/lib/context-window';
 import type { ProviderType } from '@/lib/rate-limiter';
-
-// Max chars of new chapter text to send in incremental mode
-const MAX_NEW_CHARS = 120_000;
-// Max chars for full analysis (no prior state)
-const MAX_CHARS = 180_000;
-const HEAD_CHARS = 50_000;
 
 // ─── System prompts (one per pass) ───────────────────────────────────────────
 
@@ -1419,6 +1414,7 @@ async function runMultiPassFull(
   text: string,
   allChapterTitles: string[] | undefined,
   config: AnalyzeConfig,
+  contextWindow?: number,
 ): Promise<{ result: AnalysisResult; totalRateLimitMs: number }> {
   let totalRateLimitMs = 0;
 
@@ -1429,7 +1425,7 @@ async function runMultiPassFull(
   const { result: charsResult, rateLimitWaitMs: rlChars } = await callAndParseJSON<{ characters?: AnalysisResult['characters'] }>(
     charSystem,
     buildCharactersFullPrompt(bookTitle, bookAuthor, chapterTitle, text, charSchema),
-    config, 'characters-full', config.provider === 'ollama' ? 16384 : undefined,
+    config, 'characters-full', config.provider === 'ollama' ? 16384 : undefined, contextWindow,
   );
   totalRateLimitMs += rlChars;
   let characters = charsResult?.characters ?? [];
@@ -1450,7 +1446,7 @@ async function runMultiPassFull(
     const { result: verifyResult, rateLimitWaitMs: rlVerify } = await callAndParseJSON<{ verdicts: Verdict[] }>(
       VERIFICATION_SYSTEM,
       buildVerificationPrompt(characters, text),
-      config, 'char-verify',
+      config, 'char-verify', undefined, contextWindow,
     );
     totalRateLimitMs += rlVerify;
     if (verifyResult?.verdicts?.length) {
@@ -1469,7 +1465,7 @@ async function runMultiPassFull(
   const { result: locsResult, rateLimitWaitMs: rlLocs } = await callAndParseJSON<LocResult>(
     locSystem,
     buildLocationsFullPrompt(bookTitle, bookAuthor, chapterTitle, characters, text, allChapterTitles, locSchema),
-    config, 'locations-full', config.provider === 'ollama' ? 8192 : undefined,
+    config, 'locations-full', config.provider === 'ollama' ? 8192 : undefined, contextWindow,
   );
   totalRateLimitMs += rlLocs;
   const rawLocations = locsResult?.locations ?? [];
@@ -1487,7 +1483,7 @@ async function runMultiPassFull(
   const { result: arcsResult, rateLimitWaitMs: rlArcs } = await callAndParseJSON<{ arcs?: AnalysisResult['arcs'] }>(
     arcSystem,
     buildArcsFullPrompt(bookTitle, bookAuthor, chapterTitle, text, characters, locations, allChapterTitles),
-    config, 'arcs-full', config.provider === 'ollama' ? 4096 : undefined,
+    config, 'arcs-full', config.provider === 'ollama' ? 4096 : undefined, contextWindow,
   );
   totalRateLimitMs += rlArcs;
   let arcs = arcsResult?.arcs ?? [];
@@ -1515,7 +1511,7 @@ async function runMultiPassFull(
   } else {
     console.log('[analyze] Auto-reconciliation pass');
     const callAndParse: CallAndParseFn = async <T>(system: string, userPrompt: string, label: string) => {
-      const { result, rateLimitWaitMs: rl } = await callAndParseJSON<T>(system, userPrompt, config, label, config.provider === 'ollama' ? 4096 : undefined);
+      const { result, rateLimitWaitMs: rl } = await callAndParseJSON<T>(system, userPrompt, config, label, config.provider === 'ollama' ? 4096 : undefined, contextWindow);
       totalRateLimitMs += rl;
       return result;
     };
@@ -1536,6 +1532,7 @@ async function runMultiPassDelta(
   text: string,
   previousResult: AnalysisResult,
   config: AnalyzeConfig,
+  contextWindow?: number,
 ): Promise<{ result: AnalysisResult; totalRateLimitMs: number }> {
   let totalRateLimitMs = 0;
 
@@ -1546,7 +1543,7 @@ async function runMultiPassDelta(
   const { result: charsResult, rateLimitWaitMs: rlChars } = await callAndParseJSON<CharDeltaResult>(
     charSystem,
     buildCharactersDeltaPrompt(bookTitle, bookAuthor, chapterTitle, previousResult.characters, text, charDeltaSchema),
-    config, 'characters-delta', config.provider === 'ollama' ? 8192 : undefined,
+    config, 'characters-delta', config.provider === 'ollama' ? 8192 : undefined, contextWindow,
   );
   totalRateLimitMs += rlChars;
   // Text grounding: drop delta characters whose names don't appear in the new chapter text
@@ -1565,7 +1562,7 @@ async function runMultiPassDelta(
     const { result: verifyResult, rateLimitWaitMs: rlVerify } = await callAndParseJSON<{ verdicts: Verdict[] }>(
       VERIFICATION_SYSTEM,
       buildVerificationPrompt(deltaChars, text),
-      config, 'char-verify-delta',
+      config, 'char-verify-delta', undefined, contextWindow,
     );
     totalRateLimitMs += rlVerify;
     if (verifyResult?.verdicts?.length) {
@@ -1592,7 +1589,7 @@ async function runMultiPassDelta(
   const { result: locsResult, rateLimitWaitMs: rlLocs } = await callAndParseJSON<LocDeltaResult>(
     locSystem,
     buildLocationsDeltaPrompt(bookTitle, bookAuthor, chapterTitle, currentCharacters, previousResult.locations, text, locDeltaSchema),
-    config, 'locations-delta', config.provider === 'ollama' ? 8192 : undefined,
+    config, 'locations-delta', config.provider === 'ollama' ? 8192 : undefined, contextWindow,
   );
   totalRateLimitMs += rlLocs;
   const deltaLocs = locsResult?.updatedLocations ?? [];
@@ -1609,7 +1606,7 @@ async function runMultiPassDelta(
   const { result: arcsResult, rateLimitWaitMs: rlArcs } = await callAndParseJSON<ArcDeltaResult>(
     arcSystem,
     buildArcsDeltaPrompt(bookTitle, bookAuthor, chapterTitle, previousResult.arcs, currentCharacters, currentLocations, text),
-    config, 'arcs-delta', config.provider === 'ollama' ? 4096 : undefined,
+    config, 'arcs-delta', config.provider === 'ollama' ? 4096 : undefined, contextWindow,
   );
   totalRateLimitMs += rlArcs;
   const arcDelta = {
@@ -1680,6 +1677,10 @@ export async function POST(req: NextRequest) {
 
     const modelName = config.model;
 
+    // Detect context window for this provider/model
+    const contextWindow = await getContextWindow(config);
+    console.log(`[analyze] Context window: ${contextWindow} tokens (${config.provider}/${config.model})`);
+
     const isDelta = !!(previousResult && newChapters?.length);
     let result: AnalysisResult;
     let totalRateLimitMs = 0;
@@ -1688,8 +1689,33 @@ export async function POST(req: NextRequest) {
       const newText = newChapters!
         .map((ch) => `=== ${ch.title} ===\n\n${ch.text}`)
         .join('\n\n---\n\n');
-      const truncatedNew = newText.length > MAX_NEW_CHARS ? newText.slice(-MAX_NEW_CHARS) : newText;
-      ({ result, totalRateLimitMs } = await runMultiPassDelta(bookTitle, bookAuthor, currentChapterTitle, truncatedNew, previousResult!, config));
+
+      // Estimate conservative budget for Level 1 splitting
+      const conservativeOverhead = 6000;
+      const outputReserve = 8192;
+      const budget = computeTextBudget(contextWindow, outputReserve, 'x'.repeat(conservativeOverhead));
+      const chunks = splitChapterText(newText, budget);
+
+      if (chunks.length > 1) {
+        console.log(`[analyze] Chapter "${currentChapterTitle}" split into ${chunks.length} chunks (budget: ${budget} chars)`);
+        if (contextWindow <= 4096) {
+          console.warn(`[analyze] Warning: context window is ${contextWindow} tokens — chapter "${currentChapterTitle}" requires ${chunks.length} chunks. Consider increasing num_ctx for better performance.`);
+        }
+      }
+
+      let accumulated: AnalysisResult = previousResult!;
+
+      for (const chunk of chunks) {
+        if (chunks.length > 1) {
+          console.log(`[analyze] Chapter "${currentChapterTitle}" chunk ${chunk.index + 1}/${chunk.total} (${chunk.text.length} chars)`);
+        }
+        const { result: chunkResult, totalRateLimitMs: chunkRl } = await runMultiPassDelta(
+          bookTitle, bookAuthor, currentChapterTitle, chunk.text, accumulated, config, contextWindow,
+        );
+        totalRateLimitMs += chunkRl;
+        accumulated = chunkResult;
+      }
+      result = accumulated;
     } else {
       if (!chaptersRead?.length) {
         return NextResponse.json({ error: 'No chapter text provided.' }, { status: 400 });
@@ -1697,13 +1723,36 @@ export async function POST(req: NextRequest) {
       const fullText = chaptersRead
         .map((ch) => `=== ${ch.title} ===\n\n${ch.text}`)
         .join('\n\n---\n\n');
-      const truncated = (() => {
-        if (fullText.length <= MAX_CHARS) return fullText;
-        const head = fullText.slice(0, HEAD_CHARS);
-        const tail = fullText.slice(-(MAX_CHARS - HEAD_CHARS));
-        return `${head}\n\n[... middle chapters omitted to fit context ...]\n\n${tail}`;
-      })();
-      ({ result, totalRateLimitMs } = await runMultiPassFull(bookTitle, bookAuthor, currentChapterTitle, truncated, allChapterTitles, config));
+
+      const conservativeOverhead = 6000;
+      const outputReserve = 8192;
+      const budget = computeTextBudget(contextWindow, outputReserve, 'x'.repeat(conservativeOverhead));
+      const chunks = splitChapterText(fullText, budget);
+
+      if (chunks.length > 1) {
+        console.log(`[analyze] Chapter "${currentChapterTitle}" split into ${chunks.length} chunks (budget: ${budget} chars)`);
+        if (contextWindow <= 4096) {
+          console.warn(`[analyze] Warning: context window is ${contextWindow} tokens — chapter "${currentChapterTitle}" requires ${chunks.length} chunks. Consider increasing num_ctx for better performance.`);
+        }
+      }
+
+      // First chunk: full analysis. Subsequent chunks: delta.
+      const { result: firstResult, totalRateLimitMs: firstRl } = await runMultiPassFull(
+        bookTitle, bookAuthor, currentChapterTitle, chunks[0].text, allChapterTitles, config, contextWindow,
+      );
+      totalRateLimitMs += firstRl;
+      let accumulated = firstResult;
+
+      for (let i = 1; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        console.log(`[analyze] Chapter "${currentChapterTitle}" chunk ${chunk.index + 1}/${chunk.total} (${chunk.text.length} chars)`);
+        const { result: chunkResult, totalRateLimitMs: chunkRl } = await runMultiPassDelta(
+          bookTitle, bookAuthor, currentChapterTitle, chunk.text, accumulated, config, contextWindow,
+        );
+        totalRateLimitMs += chunkRl;
+        accumulated = chunkResult;
+      }
+      result = accumulated;
     }
 
     return NextResponse.json({ ...result, _model: modelName, _rateLimitWaitMs: totalRateLimitMs || undefined });
