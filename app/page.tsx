@@ -363,6 +363,7 @@ export default function Home() {
   const [uploadTab, setUploadTab] = useState<'file' | 'calibre' | 'mybooks' | 'library'>('file');
   const [importError, setImportError] = useState<string | null>(null);
   const [myBooksRev, setMyBooksRev] = useState(0);
+  const [parentArcsRev, setParentArcsRev] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [submitBook, setSubmitBook] = useState<{ title: string; author: string } | null>(null);
@@ -480,6 +481,7 @@ export default function Home() {
     const updated = { ...storedRef.current, parentArcs: parentArcs.length > 0 ? parentArcs : undefined };
     storedRef.current = updated;
     saveStored(book.title, book.author, updated);
+    setParentArcsRev((r) => r + 1);
   }
 
   function completeSetup(range: { start: number; end: number }) {
@@ -1397,6 +1399,7 @@ export default function Home() {
   }
 
   const stored = storedRef.current;
+  void parentArcsRev; // trigger re-render when parent arcs are updated
   const hasStoredState = !!stored && stored.lastAnalyzedIndex >= 0;
   const isSeriesContinuation = stored?.lastAnalyzedIndex === -1;
   const isMetaOnly = book.chapters.every((ch) => !ch.text);

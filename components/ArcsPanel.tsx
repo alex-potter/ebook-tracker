@@ -225,6 +225,11 @@ export default function ArcsPanel({ arcs, snapshots, chapterTitles, currentResul
       pa.name === oldName ? { ...pa, name: newName.trim() } : pa
     );
     onUpdateParentArcs(updated);
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.delete(oldName)) next.add(newName.trim());
+      return next;
+    });
     setEditingGroupName(null);
   }
 
