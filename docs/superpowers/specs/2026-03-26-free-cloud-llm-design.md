@@ -59,34 +59,58 @@ export interface LLMCallConfig {
   userPrompt: string;
   maxTokens: number;
   jsonMode?: boolean;         // enable native JSON output
-  images?: string[];          // base64 data URIs for vision calls (detect-pins)
+  temperature?: number;       // defaults to 0 if omitted
+  messages?: Array<{ role: string; content: string }>;  // for multi-turn (chat route)
+  images?: Array<{ data: string; mimeType: string }>;   // for vision calls (detect-pins)
   // Connection details (resolved by resolveConfig)
   apiKey?: string;            // Anthropic or Gemini or OpenAI-compatible key
   baseUrl?: string;           // Ollama or OpenAI-compatible URL
 }
 ```
 
+### Return Type
+
+`callLLM` returns `Promise<LLMResult>`:
+
+```typescript
+export interface LLMResult {
+  text: string;
+  rateLimitWaitMs?: number;   // non-zero if a 429 retry occurred during this call
+}
+```
+
+Routes extract `result.text` for processing and pass `result.rateLimitWaitMs` through to the response for client-side progress display.
+
 ### `resolveConfig(body, overrides?)` → `Omit<LLMCallConfig, 'system' | 'userPrompt' | 'maxTokens'>`
 
-Extracts provider/model/connection details from a request body. Priority:
+Extracts provider/model/connection details from a request body. Resolution is **per-provider**, not global:
 
-1. Server env vars (if configured for that provider)
-2. Client-sent settings (`_provider`, `_apiKey`, `_ollamaUrl`, `_model`, `_geminiKey`, `_openaiCompatibleUrl`, `_openaiCompatibleKey`)
-3. Defaults per provider
+1. The client sends `_provider` indicating the user's selected provider
+2. If the server has env vars for **that specific provider**, use them (ignoring client credentials)
+3. Otherwise, use client-sent credentials for that provider
+4. Model defaults are per-provider (see Provider Routing below)
 
-The server is "configured" if any of `ANTHROPIC_API_KEY`, `USE_LOCAL_MODEL=true`, `GEMINI_API_KEY`, or `OPENAI_COMPATIBLE_URL` are set. When the server is configured, it uses its own env vars and ignores client-sent credentials. When not configured, it falls back to client-sent settings.
+Per-provider server configuration:
+- `anthropic`: server-configured if `ANTHROPIC_API_KEY` is set
+- `ollama`: server-configured if `USE_LOCAL_MODEL=true`
+- `gemini`: server-configured if `GEMINI_API_KEY` is set
+- `openai-compatible`: server-configured if `OPENAI_COMPATIBLE_URL` is set
+
+This means a server with `ANTHROPIC_API_KEY` set does NOT override a client that selected Gemini — the client's Gemini key is used. Only when the server has credentials for the client's chosen provider does the server override.
 
 ### Provider Routing
 
 `callLLM` dispatches to one of four internal callers:
 
-**`callAnthropicProvider`** — Anthropic Messages API. Existing logic from `app/api/analyze/route.ts:1214-1247` moved here. Uses `@anthropic-ai/sdk`. Default model: `claude-haiku-4-5-20251001`.
+**`callAnthropicProvider`** — Anthropic Messages API. Existing logic from `app/api/analyze/route.ts:1214-1247` moved here, including the continuation loop: when a response hits `max_tokens` (stop_reason === 'max_tokens'), the caller prefills the next assistant turn with the partial response and continues until the model finishes or a max of 5 continuations. Uses `@anthropic-ai/sdk`. Default model: `claude-haiku-4-5-20251001`.
 
-**`callOllamaProvider`** — OpenAI-compatible chat completions to Ollama URL. Existing logic from `app/api/analyze/route.ts:1249-1278` moved here. Adds `response_format: { type: 'json_object' }` when `jsonMode` is true. Default model: `qwen2.5:14b`.
+For Gemini and OpenAI-compatible providers, there is no equivalent prefill mechanism. Instead, if the response is truncated (detected by `finish_reason === 'length'` for OpenAI-compatible, or candidate `finishReason === 'MAX_TOKENS'` for Gemini), `callLLM` appends the partial text, increases `maxTokens` by 50%, and retries once. If still truncated, return what we have — the existing partial JSON recovery logic in each route handles incomplete responses.
 
-**`callGeminiProvider`** — Google Generative AI REST API (`https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent`). Uses API key auth via `key` query parameter. When `jsonMode` is true, sets `generationConfig.responseMimeType: "application/json"`. For vision calls, includes image parts in the content array. Default model: `gemini-2.0-flash`.
+**`callOllamaProvider`** — OpenAI-compatible chat completions to Ollama URL. Existing logic from `app/api/analyze/route.ts:1249-1278` moved here, including the `undici` Agent with `headersTimeout: 0, bodyTimeout: 0` for long-running local inference. Adds `response_format: { type: 'json_object' }` when `jsonMode` is true. Default model: `qwen2.5:14b`.
 
-**`callOpenAICompatibleProvider`** — Standard OpenAI chat completions format to the configured base URL. Adds `response_format: { type: 'json_object' }` when `jsonMode` is true. Uses `Authorization: Bearer {key}` header. Default model: read from `_model` field (no default — user must specify).
+**`callGeminiProvider`** — Google Generative AI REST API (`https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent`). Uses API key auth via `key` query parameter. When `jsonMode` is true, sets `generationConfig.responseMimeType: "application/json"`. For vision calls, includes `inlineData` image parts in the content array. Default model: `gemini-2.0-flash`. Uses standard `fetch` with a 5-minute timeout via `AbortSignal.timeout(300000)`.
+
+**`callOpenAICompatibleProvider`** — Standard OpenAI chat completions format to the configured base URL. Adds `response_format: { type: 'json_object' }` when `jsonMode` is true. Uses `Authorization: Bearer {key}` header. Default model: read from `_model` field (no default — user must specify). Uses standard `fetch` with a 5-minute timeout via `AbortSignal.timeout(300000)`. Free-tier providers may be slow; the timeout is generous to avoid premature aborts.
 
 ### What Moves Out of Routes
 
@@ -98,6 +122,12 @@ const raw = await callLLM({ ...config, system, userPrompt, maxTokens, jsonMode: 
 ```
 
 The analyze route's existing `callLLM` wrapper (line 1282), `callAnthropic` (line 1214), `callLocal` (line 1249), and `CallOpts` type (line 1280) all move to `lib/llm.ts` and are generalized to support 4 providers.
+
+### `maxTokens` and `temperature` Handling
+
+`maxTokens` is a required field on `LLMCallConfig` — each route is responsible for passing the appropriate value. The existing per-pass differences (e.g., `16384` for local model reconciliation vs `8192` for Anthropic analysis) are the caller's responsibility, not the unified caller's.
+
+`temperature` defaults to `0` inside `callLLM` when not specified, matching the existing behavior of all routes.
 
 ### What Stays in Routes
 
@@ -154,17 +184,19 @@ interface ProviderPacing {
 The rate limiter is called inside `callLLM`, transparent to routes:
 
 ```typescript
-export async function callLLM(config: LLMCallConfig): Promise<string> {
+export async function callLLM(config: LLMCallConfig): Promise<LLMResult> {
   const maxRetries = 3;
+  let totalWaitMs = 0;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     await rateLimiter.waitIfNeeded(config.provider);
     try {
-      const result = await dispatch(config);
+      const text = await dispatch(config);
       rateLimiter.recordSuccess(config.provider);
-      return result;
+      return { text, rateLimitWaitMs: totalWaitMs || undefined };
     } catch (err) {
       if (isRateLimitError(err) && attempt < maxRetries) {
         const waitMs = rateLimiter.recordRateLimit(config.provider, parseRetryAfter(err));
+        totalWaitMs += waitMs;
         await sleep(waitMs);
         continue;
       }
@@ -179,15 +211,7 @@ export async function callLLM(config: LLMCallConfig): Promise<string> {
 
 ### UI Feedback
 
-When `callLLM` encounters a 429 and waits, the response to the client includes metadata:
-
-```typescript
-{ _rateLimited: true, _waitSeconds: number }
-```
-
-The analysis progress indicator in `page.tsx` shows: "Waiting for rate limit... (Xs)" when this metadata is present. This is communicated via the response of each chapter analysis call — the client-side `analyzeChapter` function checks for `_rateLimited` in the response and updates the progress UI.
-
-Since the rate limiter handles retries internally, the calling route may need to surface the wait time. The simplest approach: `callLLM` returns a result object `{ text: string; rateLimitWaitMs?: number }` instead of a plain string. Routes pass through the `rateLimitWaitMs` to the response. The client progress UI renders it.
+Routes pass `result.rateLimitWaitMs` through to the JSON response as `_rateLimitWaitMs`. The analysis progress indicator in `page.tsx` shows: "rate limit: waiting Xs" when this field is present in a chapter response. This is a simple string update to the existing progress state.
 
 ## Client-Side Rate Limiting (Mobile Mode)
 
@@ -232,7 +256,7 @@ Shown when `provider === 'gemini'`:
 
 Shown when `provider === 'openai-compatible'`:
 
-- **Provider name** text input (e.g. "Groq", "OpenRouter") — used for display labels
+- **Provider name** text input (e.g. "Groq", "OpenRouter") — displayed in the provider toggle button label (replacing "OpenAI-compatible" with the user's name), in error messages ("Groq error: ..."), and in the progress indicator ("Analyzing with Groq...")
 - **Base URL** input (e.g. `https://api.groq.com/openai/v1`)
 - **API key** input (password field)
 - **Model name** text input (free-form, e.g. `llama-3.3-70b-versatile`)
@@ -309,9 +333,11 @@ _openaiCompatibleKey?: string;
 
 ### `app/api/group-arcs/route.ts`
 
-- Remove inline Anthropic/Ollama branching
+- Remove inline Anthropic/Ollama branching. **Note:** The existing Ollama branch in this route calls Ollama's native `/api/generate` endpoint (not the OpenAI-compatible `/v1/chat/completions`). The unified `callOllamaProvider` uses the OpenAI-compatible endpoint, which Ollama supports equally well. This is a safe change — the `/v1/chat/completions` endpoint is the standard path for Ollama ≥0.1.29.
+- Remove the inline `serverHasKey`/`useLocal` logic — this route currently lacks the server-config check pattern used by other routes. `resolveConfig` normalizes this.
 - Import `callLLM`, `resolveConfig` from `@/lib/llm`
 - Single call: `callLLM({ ...resolveConfig(body), system: '', userPrompt: prompt, maxTokens: 4096, jsonMode: true })`
+- **Model override:** The existing route defaults to `claude-sonnet-4-20250514` for Anthropic (not Haiku like other routes). Pass this as `resolveConfig(body, { defaultAnthropicModel: 'claude-sonnet-4-20250514' })`. `resolveConfig` accepts an optional `overrides` parameter for per-route model defaults.
 
 ### `app/api/chat/route.ts`
 
@@ -329,8 +355,14 @@ _openaiCompatibleKey?: string;
 
 - Remove inline provider branching
 - Import `callLLM`, `resolveConfig` from `@/lib/llm`
-- Pass base64 image data via `images` array in `LLMCallConfig`
-- Gemini handles vision natively (image parts in content). OpenAI-compatible uses the standard vision message format (`{ type: "image_url", image_url: { url: "data:..." } }`). If the selected provider/model doesn't support vision, the call fails with a clear error message.
+- **New client plumbing:** This route currently only reads server env vars (`USE_LOCAL_MODEL`, `LOCAL_MODEL_URL`, `LOCAL_VISION_MODEL_NAME`) — it does not accept `_provider`/`_apiKey` from the client. Add the same `_provider`/`_apiKey`/etc. fields to its request body, and update the call site in `page.tsx` (the `detectPins` function) to pass client settings, following the same pattern as `analyzeChapter`.
+- Pass base64 image data via the `images` array in `LLMCallConfig` as `{ data: string; mimeType: string }` objects. Each provider caller encodes images in its native format:
+  - **Anthropic:** `{ type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } }`
+  - **Gemini:** `{ inlineData: { mimeType, data: base64 } }` in the content parts array
+  - **OpenAI-compatible:** `{ type: 'image_url', image_url: { url: 'data:{mimeType};base64,{data}' } }` in the user message content array
+  - **Ollama:** Same as OpenAI-compatible format (Ollama's OpenAI-compatible endpoint supports this)
+- **Vision model env var:** The existing `LOCAL_VISION_MODEL_NAME` env var (distinct from `LOCAL_MODEL_NAME`) is preserved. When `images` is non-empty and the provider is `ollama`, `resolveConfig` uses `LOCAL_VISION_MODEL_NAME` instead of `LOCAL_MODEL_NAME`.
+- If the selected provider/model doesn't support vision, the call fails with a clear error: "Pin detection requires a vision-capable model. Try Gemini Flash or Claude."
 
 ## Client-Side `analyzeChapter` Changes (`app/page.tsx`)
 
@@ -365,7 +397,7 @@ This is a simple string update to the existing progress state — no new UI comp
 
 | File | Change |
 |------|--------|
-| `lib/ai-client.ts` | Expand `AiSettings` type, add `geminiKey`/`openaiCompatibleUrl`/`openaiCompatibleKey`/`openaiCompatibleName` fields and defaults, add Gemini + OpenAI-compatible client-side callers, update `callAi`/`chatWithBook`/`testConnection`, integrate client-side rate limiter |
+| `lib/ai-client.ts` | Expand `AiSettings` type, add `geminiKey`/`openaiCompatibleUrl`/`openaiCompatibleKey`/`openaiCompatibleName` fields and defaults, add Gemini + OpenAI-compatible client-side callers, update `callAi`/`chatWithBook`/`callAndParseClient`/`testConnection` to support all 4 providers, integrate client-side rate limiter |
 | `components/SettingsModal.tsx` | Add Gemini and OpenAI-compatible provider tabs, model selectors, quick presets for OpenAI-compatible, update test connection |
 | `app/page.tsx` | Add `showSetupPrompt` state and inline setup card UI, pass new settings fields to `analyzeChapter`/`generateParentArcs`, show rate limit wait in progress indicator |
 | `app/api/analyze/route.ts` | Remove `callAnthropic`/`callLocal`/`CallOpts`/local `callLLM`, import from `lib/llm`, update `runMultiPassFull`/`runMultiPassDelta` to use `resolveConfig` + `callLLM`, gate simplified prompts on `provider === 'ollama'` instead of `useLocal` |
