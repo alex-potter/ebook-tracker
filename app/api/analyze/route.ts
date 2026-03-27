@@ -1386,6 +1386,66 @@ async function callAndParseJSON<T>(
   return { result: null, rateLimitWaitMs: totalRateLimitMs };
 }
 
+/**
+ * Level 2 safety net: if the text exceeds a pass's specific budget,
+ * split and run the pass multiple times, merging array results.
+ */
+async function runPassWithSplitting<T>(
+  system: string,
+  buildPrompt: (text: string) => string,
+  config: AnalyzeConfig,
+  label: string,
+  text: string,
+  contextWindow: number | undefined,
+  maxTokens: number | undefined,
+): Promise<{ result: T | null; rateLimitWaitMs: number }> {
+  if (!contextWindow) {
+    // No context window info — just run normally
+    return callAndParseJSON<T>(system, buildPrompt(text), config, label, maxTokens, contextWindow);
+  }
+
+  const outputReserve = maxTokens ?? 16384;
+  // Build the prompt WITHOUT the text to measure overhead
+  const promptWithoutText = buildPrompt('');
+  const budget = computeTextBudget(contextWindow, outputReserve, promptWithoutText);
+
+  if (text.length <= budget) {
+    return callAndParseJSON<T>(system, buildPrompt(text), config, label, maxTokens, contextWindow);
+  }
+
+  // Text exceeds this pass's budget — split and run multiple times
+  const chunks = splitChapterText(text, budget);
+  console.log(`[analyze] ${label}: text exceeds pass budget (${text.length} > ${budget} chars), splitting into ${chunks.length} sub-calls`);
+
+  let accumulated: Record<string, unknown> | null = null;
+  let totalRl = 0;
+
+  for (const chunk of chunks) {
+    const { result, rateLimitWaitMs } = await callAndParseJSON<Record<string, unknown>>(
+      system, buildPrompt(chunk.text), config, `${label}-chunk${chunk.index + 1}`, maxTokens, contextWindow,
+    );
+    totalRl += rateLimitWaitMs;
+    if (!result) continue;
+
+    if (!accumulated) {
+      accumulated = result;
+    } else {
+      // Merge array fields from the chunk result into accumulated
+      for (const key of Object.keys(result)) {
+        const val = result[key];
+        const existing = accumulated[key];
+        if (Array.isArray(val) && Array.isArray(existing)) {
+          accumulated[key] = [...existing, ...val];
+        } else if (val !== undefined && existing === undefined) {
+          accumulated[key] = val;
+        }
+      }
+    }
+  }
+
+  return { result: accumulated as T | null, rateLimitWaitMs: totalRl };
+}
+
 // ─── Multi-pass analysis ──────────────────────────────────────────────────────
 
 interface ArcDeltaResult {
@@ -1423,10 +1483,10 @@ async function runMultiPassFull(
   console.log('[analyze] Pass 1: characters');
   const charSystem = config.provider === 'ollama' ? CHARACTERS_SYSTEM_LOCAL : CHARACTERS_SYSTEM;
   const charSchema = config.provider === 'ollama' ? CHARACTER_SCHEMA_LOCAL : CHARACTER_SCHEMA;
-  const { result: charsResult, rateLimitWaitMs: rlChars } = await callAndParseJSON<{ characters?: AnalysisResult['characters'] }>(
+  const { result: charsResult, rateLimitWaitMs: rlChars } = await runPassWithSplitting<{ characters?: AnalysisResult['characters'] }>(
     charSystem,
-    buildCharactersFullPrompt(bookTitle, bookAuthor, chapterTitle, text, charSchema),
-    config, 'characters-full', config.provider === 'ollama' ? 16384 : undefined, contextWindow,
+    (t) => buildCharactersFullPrompt(bookTitle, bookAuthor, chapterTitle, t, charSchema),
+    config, 'characters-full', text, contextWindow, config.provider === 'ollama' ? 16384 : undefined,
   );
   totalRateLimitMs += rlChars;
   let characters = charsResult?.characters ?? [];
@@ -1466,10 +1526,10 @@ async function runMultiPassFull(
   console.log('[analyze] Pass 2: locations');
   const locSystem = config.provider === 'ollama' ? LOCATIONS_SYSTEM_LOCAL : LOCATIONS_SYSTEM;
   const locSchema = config.provider === 'ollama' ? LOCATION_SCHEMA_LOCAL : LOCATION_SCHEMA;
-  const { result: locsResult, rateLimitWaitMs: rlLocs } = await callAndParseJSON<LocResult>(
+  const { result: locsResult, rateLimitWaitMs: rlLocs } = await runPassWithSplitting<LocResult>(
     locSystem,
-    buildLocationsFullPrompt(bookTitle, bookAuthor, chapterTitle, characters, text, allChapterTitles, locSchema),
-    config, 'locations-full', config.provider === 'ollama' ? 8192 : undefined, contextWindow,
+    (t) => buildLocationsFullPrompt(bookTitle, bookAuthor, chapterTitle, characters, t, allChapterTitles, locSchema),
+    config, 'locations-full', text, contextWindow, config.provider === 'ollama' ? 8192 : undefined,
   );
   totalRateLimitMs += rlLocs;
   const rawLocations = locsResult?.locations ?? [];
@@ -1484,10 +1544,10 @@ async function runMultiPassFull(
   // Pass 3: Arcs (with full character + location context)
   console.log('[analyze] Pass 3: arcs');
   const arcSystem = config.provider === 'ollama' ? ARCS_SYSTEM_LOCAL : ARCS_SYSTEM;
-  const { result: arcsResult, rateLimitWaitMs: rlArcs } = await callAndParseJSON<{ arcs?: AnalysisResult['arcs'] }>(
+  const { result: arcsResult, rateLimitWaitMs: rlArcs } = await runPassWithSplitting<{ arcs?: AnalysisResult['arcs'] }>(
     arcSystem,
-    buildArcsFullPrompt(bookTitle, bookAuthor, chapterTitle, text, characters, locations, allChapterTitles),
-    config, 'arcs-full', config.provider === 'ollama' ? 4096 : undefined, contextWindow,
+    (t) => buildArcsFullPrompt(bookTitle, bookAuthor, chapterTitle, t, characters, locations, allChapterTitles),
+    config, 'arcs-full', text, contextWindow, config.provider === 'ollama' ? 4096 : undefined,
   );
   totalRateLimitMs += rlArcs;
   let arcs = arcsResult?.arcs ?? [];
@@ -1548,10 +1608,10 @@ async function runMultiPassDelta(
   console.log('[analyze] Pass 1: characters (delta)');
   const charSystem = config.provider === 'ollama' ? CHARACTERS_SYSTEM_LOCAL : CHARACTERS_SYSTEM;
   const charDeltaSchema = config.provider === 'ollama' ? CHARACTER_DELTA_SCHEMA_LOCAL : CHARACTER_DELTA_SCHEMA;
-  const { result: charsResult, rateLimitWaitMs: rlChars } = await callAndParseJSON<CharDeltaResult>(
+  const { result: charsResult, rateLimitWaitMs: rlChars } = await runPassWithSplitting<CharDeltaResult>(
     charSystem,
-    buildCharactersDeltaPrompt(bookTitle, bookAuthor, chapterTitle, previousResult.characters, text, charDeltaSchema),
-    config, 'characters-delta', config.provider === 'ollama' ? 8192 : undefined, contextWindow,
+    (t) => buildCharactersDeltaPrompt(bookTitle, bookAuthor, chapterTitle, previousResult.characters, t, charDeltaSchema),
+    config, 'characters-delta', text, contextWindow, config.provider === 'ollama' ? 8192 : undefined,
   );
   totalRateLimitMs += rlChars;
   // Text grounding: drop delta characters whose names don't appear in the new chapter text
@@ -1597,10 +1657,10 @@ async function runMultiPassDelta(
   console.log('[analyze] Pass 2: locations (delta)');
   const locSystem = config.provider === 'ollama' ? LOCATIONS_SYSTEM_LOCAL : LOCATIONS_SYSTEM;
   const locDeltaSchema = config.provider === 'ollama' ? LOCATION_DELTA_SCHEMA_LOCAL : LOCATION_DELTA_SCHEMA;
-  const { result: locsResult, rateLimitWaitMs: rlLocs } = await callAndParseJSON<LocDeltaResult>(
+  const { result: locsResult, rateLimitWaitMs: rlLocs } = await runPassWithSplitting<LocDeltaResult>(
     locSystem,
-    buildLocationsDeltaPrompt(bookTitle, bookAuthor, chapterTitle, currentCharacters, previousResult.locations, text, locDeltaSchema),
-    config, 'locations-delta', config.provider === 'ollama' ? 8192 : undefined, contextWindow,
+    (t) => buildLocationsDeltaPrompt(bookTitle, bookAuthor, chapterTitle, currentCharacters, previousResult.locations, t, locDeltaSchema),
+    config, 'locations-delta', text, contextWindow, config.provider === 'ollama' ? 8192 : undefined,
   );
   totalRateLimitMs += rlLocs;
   const deltaLocs = locsResult?.updatedLocations ?? [];
@@ -1614,10 +1674,10 @@ async function runMultiPassDelta(
   // Pass 3: Arcs (with full character + location context)
   console.log('[analyze] Pass 3: arcs (delta)');
   const arcSystem = config.provider === 'ollama' ? ARCS_SYSTEM_LOCAL : ARCS_SYSTEM;
-  const { result: arcsResult, rateLimitWaitMs: rlArcs } = await callAndParseJSON<ArcDeltaResult>(
+  const { result: arcsResult, rateLimitWaitMs: rlArcs } = await runPassWithSplitting<ArcDeltaResult>(
     arcSystem,
-    buildArcsDeltaPrompt(bookTitle, bookAuthor, chapterTitle, previousResult.arcs, currentCharacters, currentLocations, text),
-    config, 'arcs-delta', config.provider === 'ollama' ? 4096 : undefined, contextWindow,
+    (t) => buildArcsDeltaPrompt(bookTitle, bookAuthor, chapterTitle, previousResult.arcs, currentCharacters, currentLocations, t),
+    config, 'arcs-delta', text, contextWindow, config.provider === 'ollama' ? 4096 : undefined,
   );
   totalRateLimitMs += rlArcs;
   const arcDelta = {
