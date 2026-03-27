@@ -25,6 +25,7 @@ export interface LLMCallConfig {
 
 export interface LLMResult {
   text: string;
+  truncated?: boolean;
   rateLimitWaitMs?: number;
 }
 
@@ -52,12 +53,17 @@ function getAnthropicClient(apiKey?: string): Anthropic {
   return client;
 }
 
+// ─── Internal result type ────────────────────────────────────────────────────
+
+interface DispatchResult { text: string; truncated: boolean }
+
 // ─── Provider callers ────────────────────────────────────────────────────────
 
-async function callAnthropicProvider(config: LLMCallConfig): Promise<string> {
+async function callAnthropicProvider(config: LLMCallConfig): Promise<DispatchResult> {
   const client = getAnthropicClient(config.apiKey);
   const model = config.model || 'claude-haiku-4-5-20251001';
   let fullText = '';
+  let truncated = false;
 
   // Continuation loop: if the response hits max_tokens, prefill the assistant
   // turn with what we have so far and let the model continue where it left off.
@@ -99,203 +105,251 @@ async function callAnthropicProvider(config: LLMCallConfig): Promise<string> {
     fullText += block.text;
 
     if (response.stop_reason !== 'max_tokens') break;
-    console.log(`[llm] Anthropic response hit max_tokens, continuing (pass ${pass + 1})…`);
+    if (pass === 4) {
+      truncated = true;
+    } else {
+      console.log(`[llm] Anthropic response hit max_tokens, continuing (pass ${pass + 1})…`);
+    }
   }
 
   if (!fullText) throw new Error('No text response from Anthropic.');
-  return fullText;
+  return { text: fullText, truncated };
 }
 
-async function callOllamaProvider(config: LLMCallConfig): Promise<string> {
+async function callOllamaProvider(config: LLMCallConfig): Promise<DispatchResult> {
   const baseUrl = (config.baseUrl ?? 'http://localhost:11434/v1').replace(/\/$/, '');
   const model = config.model || 'qwen2.5:14b';
+  let fullText = '';
+  let truncated = false;
 
-  const messages: Array<{ role: string; content: string | Array<{ type: string; [key: string]: unknown }> }> = [];
+  for (let pass = 0; pass < 5; pass++) {
+    const messages: Array<{ role: string; content: string | Array<{ type: string; [key: string]: unknown }> }> = [];
 
-  if (config.messages?.length) {
-    if (config.system) messages.push({ role: 'system', content: config.system });
-    messages.push(...config.messages);
-  } else if (config.images?.length) {
-    if (config.system) messages.push({ role: 'system', content: config.system });
-    const content: Array<{ type: string; [key: string]: unknown }> = config.images.map((img) => ({
-      type: 'image_url',
-      image_url: { url: `data:${img.mimeType};base64,${img.data}` },
-    }));
-    content.push({ type: 'text', text: config.userPrompt });
-    messages.push({ role: 'user', content });
-  } else {
-    if (config.system) messages.push({ role: 'system', content: config.system });
-    messages.push({ role: 'user', content: config.userPrompt });
+    if (config.messages?.length) {
+      if (config.system) messages.push({ role: 'system', content: config.system });
+      messages.push(...config.messages);
+    } else if (config.images?.length) {
+      if (config.system) messages.push({ role: 'system', content: config.system });
+      const content: Array<{ type: string; [key: string]: unknown }> = config.images.map((img) => ({
+        type: 'image_url',
+        image_url: { url: `data:${img.mimeType};base64,${img.data}` },
+      }));
+      content.push({ type: 'text', text: config.userPrompt });
+      messages.push({ role: 'user', content });
+    } else {
+      if (config.system) messages.push({ role: 'system', content: config.system });
+      messages.push({ role: 'user', content: config.userPrompt });
+    }
+
+    if (fullText) {
+      messages.push({ role: 'assistant', content: fullText });
+    }
+
+    const body: Record<string, unknown> = {
+      model,
+      temperature: config.temperature ?? 0,
+      max_tokens: config.maxTokens,
+      messages,
+    };
+    if (config.jsonMode) body.response_format = { type: 'json_object' };
+
+    const res = await undiciFetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      dispatcher: ollamaAgent,
+      body: JSON.stringify(body),
+    } as Parameters<typeof undiciFetch>[1]);
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Ollama error (${res.status}): ${err}`);
+    }
+
+    const data = await res.json() as { choices?: { message?: { content?: string }; finish_reason?: string }[] };
+    const text = data.choices?.[0]?.message?.content;
+    if (!text) throw new Error('No content in Ollama response.');
+    fullText += text;
+
+    const finishReason = data.choices?.[0]?.finish_reason;
+    if (finishReason !== 'length') break;
+    if (pass === 4) {
+      truncated = true;
+    } else {
+      console.log(`[llm] Ollama response hit length limit, continuing (pass ${pass + 1})…`);
+    }
   }
 
-  const body: Record<string, unknown> = {
-    model,
-    temperature: config.temperature ?? 0,
-    max_tokens: config.maxTokens,
-    messages,
-  };
-  if (config.jsonMode) body.response_format = { type: 'json_object' };
-
-  const res = await undiciFetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    dispatcher: ollamaAgent,
-    body: JSON.stringify(body),
-  } as Parameters<typeof undiciFetch>[1]);
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Ollama error (${res.status}): ${err}`);
-  }
-
-  const data = await res.json() as { choices?: { message?: { content?: string }; finish_reason?: string }[] };
-  const text = data.choices?.[0]?.message?.content;
-  if (!text) throw new Error('No content in Ollama response.');
-  return text;
+  if (!fullText) throw new Error('No content in Ollama response.');
+  return { text: fullText, truncated };
 }
 
-async function callGeminiProvider(config: LLMCallConfig, retried = false): Promise<string> {
+async function callGeminiProvider(config: LLMCallConfig): Promise<DispatchResult> {
   if (!config.apiKey) throw new Error('Gemini API key not configured. Open Settings to add your key.');
   const model = config.model || 'gemini-2.0-flash';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.apiKey}`;
+  let fullText = '';
+  let truncated = false;
 
-  const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
+  for (let pass = 0; pass < 5; pass++) {
+    const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
 
-  if (config.images?.length) {
-    for (const img of config.images) {
-      parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
-    }
-  }
-  parts.push({ text: config.userPrompt });
-
-  const contents: Array<{ role: string; parts: typeof parts }> = [];
-
-  if (config.messages?.length) {
-    // Multi-turn chat: map messages to Gemini format
-    for (const m of config.messages) {
-      const role = m.role === 'assistant' ? 'model' : 'user';
-      const msgParts: typeof parts = [{ text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }];
-      contents.push({ role, parts: msgParts });
-    }
-    // Append images to the last user turn if present
     if (config.images?.length) {
-      const imgParts: typeof parts = config.images.map((img) => ({ inlineData: { mimeType: img.mimeType, data: img.data } }));
-      const lastUser = [...contents].reverse().find((c) => c.role === 'user');
-      if (lastUser) lastUser.parts.push(...imgParts);
-      else contents.push({ role: 'user', parts: imgParts });
+      for (const img of config.images) {
+        parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
+      }
     }
-  } else {
-    contents.push({ role: 'user', parts });
+    parts.push({ text: config.userPrompt });
+
+    const contents: Array<{ role: string; parts: typeof parts }> = [];
+
+    if (config.messages?.length) {
+      // Multi-turn chat: map messages to Gemini format
+      for (const m of config.messages) {
+        const role = m.role === 'assistant' ? 'model' : 'user';
+        const msgParts: typeof parts = [{ text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }];
+        contents.push({ role, parts: msgParts });
+      }
+      // Append images to the last user turn if present
+      if (config.images?.length) {
+        const imgParts: typeof parts = config.images.map((img) => ({ inlineData: { mimeType: img.mimeType, data: img.data } }));
+        const lastUser = [...contents].reverse().find((c) => c.role === 'user');
+        if (lastUser) lastUser.parts.push(...imgParts);
+        else contents.push({ role: 'user', parts: imgParts });
+      }
+    } else {
+      contents.push({ role: 'user', parts });
+    }
+
+    if (fullText) {
+      contents.push({ role: 'model', parts: [{ text: fullText }] });
+    }
+
+    const body: Record<string, unknown> = {
+      contents,
+      generationConfig: {
+        maxOutputTokens: config.maxTokens,
+        temperature: config.temperature ?? 0,
+      },
+    };
+
+    if (config.system) {
+      body.systemInstruction = { parts: [{ text: config.system }] };
+    }
+    if (config.jsonMode) {
+      (body.generationConfig as Record<string, unknown>).responseMimeType = 'application/json';
+    }
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Gemini error (${res.status}): ${err}`);
+    }
+
+    const data = await res.json() as {
+      candidates?: Array<{
+        content?: { parts?: Array<{ text?: string }> };
+        finishReason?: string;
+      }>;
+    };
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error('No text in Gemini response.');
+    fullText += text;
+
+    const finishReason = data.candidates?.[0]?.finishReason;
+    if (finishReason !== 'MAX_TOKENS') break;
+    if (pass === 4) {
+      truncated = true;
+    } else {
+      console.log(`[llm] Gemini response hit MAX_TOKENS, continuing (pass ${pass + 1})…`);
+    }
   }
 
-  const body: Record<string, unknown> = {
-    contents,
-    generationConfig: {
-      maxOutputTokens: config.maxTokens,
-      temperature: config.temperature ?? 0,
-    },
-  };
-
-  if (config.system) {
-    body.systemInstruction = { parts: [{ text: config.system }] };
-  }
-  if (config.jsonMode) {
-    (body.generationConfig as Record<string, unknown>).responseMimeType = 'application/json';
-  }
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Gemini error (${res.status}): ${err}`);
-  }
-
-  const data = await res.json() as {
-    candidates?: Array<{
-      content?: { parts?: Array<{ text?: string }> };
-      finishReason?: string;
-    }>;
-  };
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('No text in Gemini response.');
-
-  // Handle truncation: retry once with more tokens
-  if (data.candidates?.[0]?.finishReason === 'MAX_TOKENS' && !retried) {
-    console.log('[llm] Gemini response truncated, retrying with more tokens…');
-    return callGeminiProvider({ ...config, maxTokens: Math.ceil(config.maxTokens * 1.5) }, true);
-  }
-
-  return text;
+  if (!fullText) throw new Error('No text in Gemini response.');
+  return { text: fullText, truncated };
 }
 
-async function callOpenAICompatibleProvider(config: LLMCallConfig, retried = false): Promise<string> {
+async function callOpenAICompatibleProvider(config: LLMCallConfig): Promise<DispatchResult> {
   if (!config.baseUrl) throw new Error('OpenAI-compatible base URL not configured. Open Settings.');
   const baseUrl = config.baseUrl.replace(/\/$/, '');
   const model = config.model;
   if (!model) throw new Error('No model specified for OpenAI-compatible provider. Open Settings to configure.');
 
-  const messages: Array<{ role: string; content: string | Array<{ type: string; [key: string]: unknown }> }> = [];
+  let fullText = '';
+  let truncated = false;
 
-  if (config.messages?.length) {
-    if (config.system) messages.push({ role: 'system', content: config.system });
-    messages.push(...config.messages);
-  } else if (config.images?.length) {
-    const content: Array<{ type: string; [key: string]: unknown }> = config.images.map((img) => ({
-      type: 'image_url',
-      image_url: { url: `data:${img.mimeType};base64,${img.data}` },
-    }));
-    content.push({ type: 'text', text: config.userPrompt });
-    if (config.system) messages.push({ role: 'system', content: config.system });
-    messages.push({ role: 'user', content });
-  } else {
-    if (config.system) messages.push({ role: 'system', content: config.system });
-    messages.push({ role: 'user', content: config.userPrompt });
+  for (let pass = 0; pass < 5; pass++) {
+    const messages: Array<{ role: string; content: string | Array<{ type: string; [key: string]: unknown }> }> = [];
+
+    if (config.messages?.length) {
+      if (config.system) messages.push({ role: 'system', content: config.system });
+      messages.push(...config.messages);
+    } else if (config.images?.length) {
+      const content: Array<{ type: string; [key: string]: unknown }> = config.images.map((img) => ({
+        type: 'image_url',
+        image_url: { url: `data:${img.mimeType};base64,${img.data}` },
+      }));
+      content.push({ type: 'text', text: config.userPrompt });
+      if (config.system) messages.push({ role: 'system', content: config.system });
+      messages.push({ role: 'user', content });
+    } else {
+      if (config.system) messages.push({ role: 'system', content: config.system });
+      messages.push({ role: 'user', content: config.userPrompt });
+    }
+
+    if (fullText) {
+      messages.push({ role: 'assistant', content: fullText });
+    }
+
+    const body: Record<string, unknown> = {
+      model,
+      temperature: config.temperature ?? 0,
+      max_tokens: config.maxTokens,
+      messages,
+    };
+    if (config.jsonMode) body.response_format = { type: 'json_object' };
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (config.apiKey) headers['Authorization'] = `Bearer ${config.apiKey}`;
+
+    const res = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`OpenAI-compatible error (${res.status}): ${err}`);
+    }
+
+    const data = await res.json() as { choices?: { message?: { content?: string }; finish_reason?: string }[] };
+    const text = data.choices?.[0]?.message?.content;
+    if (!text) throw new Error('No content in OpenAI-compatible response.');
+    fullText += text;
+
+    const finishReason = data.choices?.[0]?.finish_reason;
+    if (finishReason !== 'length') break;
+    if (pass === 4) {
+      truncated = true;
+    } else {
+      console.log(`[llm] OpenAI-compatible response hit length limit, continuing (pass ${pass + 1})…`);
+    }
   }
 
-  const body: Record<string, unknown> = {
-    model,
-    temperature: config.temperature ?? 0,
-    max_tokens: config.maxTokens,
-    messages,
-  };
-  if (config.jsonMode) body.response_format = { type: 'json_object' };
-
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (config.apiKey) headers['Authorization'] = `Bearer ${config.apiKey}`;
-
-  const res = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`OpenAI-compatible error (${res.status}): ${err}`);
-  }
-
-  const data = await res.json() as { choices?: { message?: { content?: string }; finish_reason?: string }[] };
-  const text = data.choices?.[0]?.message?.content;
-  if (!text) throw new Error('No content in OpenAI-compatible response.');
-
-  // Handle truncation: retry once with more tokens
-  if (data.choices?.[0]?.finish_reason === 'length' && !retried) {
-    console.log('[llm] OpenAI-compatible response truncated, retrying with more tokens…');
-    return callOpenAICompatibleProvider({ ...config, maxTokens: Math.ceil(config.maxTokens * 1.5) }, true);
-  }
-
-  return text;
+  if (!fullText) throw new Error('No content in OpenAI-compatible response.');
+  return { text: fullText, truncated };
 }
 
 // ─── Dispatch + rate limiting ────────────────────────────────────────────────
 
-function dispatch(config: LLMCallConfig): Promise<string> {
+function dispatch(config: LLMCallConfig): Promise<DispatchResult> {
   switch (config.provider) {
     case 'anthropic': return callAnthropicProvider(config);
     case 'ollama': return callOllamaProvider(config);
@@ -330,9 +384,9 @@ export async function callLLM(config: LLMCallConfig): Promise<LLMResult> {
     totalWaitMs += paceWait;
 
     try {
-      const text = await dispatch(config);
+      const { text, truncated } = await dispatch(config);
       rateLimiter.recordSuccess(config.provider);
-      return { text, rateLimitWaitMs: totalWaitMs || undefined };
+      return { text, truncated: truncated || undefined, rateLimitWaitMs: totalWaitMs || undefined };
     } catch (err) {
       if (!isRateLimitError(err) || attempt >= maxRetries) throw err;
       const retryAfterMs = rateLimiter.parseRetryAfter(extractHeaders(err));
