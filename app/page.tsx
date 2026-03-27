@@ -228,6 +228,9 @@ async function analyzeChapter(
     if (s.anthropicKey) aiSettings._apiKey = s.anthropicKey;
     if (s.ollamaUrl) aiSettings._ollamaUrl = s.ollamaUrl;
     if (s.model) aiSettings._model = s.model;
+    if (s.geminiKey) aiSettings._geminiKey = s.geminiKey;
+    if (s.openaiCompatibleUrl) aiSettings._openaiCompatibleUrl = s.openaiCompatibleUrl;
+    if (s.openaiCompatibleKey) aiSettings._openaiCompatibleKey = s.openaiCompatibleKey;
   } catch { /* ignore — server will use env vars */ }
 
   const body = previousResult
@@ -264,6 +267,9 @@ async function reconcileResult(
     if (s.anthropicKey) aiSettings._apiKey = s.anthropicKey;
     if (s.ollamaUrl) aiSettings._ollamaUrl = s.ollamaUrl;
     if (s.model) aiSettings._model = s.model;
+    if (s.geminiKey) aiSettings._geminiKey = s.geminiKey;
+    if (s.openaiCompatibleUrl) aiSettings._openaiCompatibleUrl = s.openaiCompatibleUrl;
+    if (s.openaiCompatibleKey) aiSettings._openaiCompatibleKey = s.openaiCompatibleKey;
   } catch { /* ignore */ }
 
   const res = await fetch('/api/reconcile', {
@@ -295,6 +301,9 @@ async function generateParentArcs(
     if (s.anthropicKey) aiSettings._apiKey = s.anthropicKey;
     if (s.ollamaUrl) aiSettings._ollamaUrl = s.ollamaUrl;
     if (s.model) aiSettings._model = s.model;
+    if (s.geminiKey) aiSettings._geminiKey = s.geminiKey;
+    if (s.openaiCompatibleUrl) aiSettings._openaiCompatibleUrl = s.openaiCompatibleUrl;
+    if (s.openaiCompatibleKey) aiSettings._openaiCompatibleKey = s.openaiCompatibleKey;
   } catch { /* ignore */ }
 
   const res = await fetch('/api/group-arcs', {

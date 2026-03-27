@@ -400,7 +400,17 @@ export default function MapBoard({ characters, arcs = [], locationInfos = [], bo
     setDetectError(null);
     setSuggestions(null);
     try {
+      const { loadAiSettings } = await import('@/lib/ai-client');
+      const s = loadAiSettings();
       const { dataUrl: imageDataUrl, width: imageWidth, height: imageHeight } = await resizeDataUrl(mapState.imageDataUrl, 1024);
+      const aiSettings: Record<string, string> = {};
+      aiSettings._provider = s.provider;
+      if (s.anthropicKey) aiSettings._apiKey = s.anthropicKey;
+      if (s.ollamaUrl) aiSettings._ollamaUrl = s.ollamaUrl;
+      if (s.model) aiSettings._model = s.model;
+      if (s.geminiKey) aiSettings._geminiKey = s.geminiKey;
+      if (s.openaiCompatibleUrl) aiSettings._openaiCompatibleUrl = s.openaiCompatibleUrl;
+      if (s.openaiCompatibleKey) aiSettings._openaiCompatibleKey = s.openaiCompatibleKey;
       const res = await fetch('/api/detect-pins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -409,6 +419,7 @@ export default function MapBoard({ characters, arcs = [], locationInfos = [], bo
           imageWidth,
           imageHeight,
           locations: locations.map(([name]) => name).filter(isPlaceName),
+          ...aiSettings,
         }),
       });
       const data = await res.json();

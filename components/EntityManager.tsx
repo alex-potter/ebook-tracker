@@ -6,6 +6,7 @@ import type { SnapshotTransform } from '@/lib/propagate-edit';
 import { mergeCharacters, splitCharacter, deleteCharacter, mergeLocations, splitLocation, deleteLocation, mergeArcs, splitArc, deleteArc } from '@/lib/propagate-edit';
 import { aggregateEntities } from '@/lib/aggregate-entities';
 import type { AggregatedCharacter, AggregatedLocation, AggregatedArc } from '@/lib/aggregate-entities';
+import { findStringDuplicates } from '@/lib/reconcile';
 import type { ReconcileProposals, MergeProposal, SplitProposal } from '@/lib/reconcile';
 import CharacterModal from './CharacterModal';
 import LocationModal from './LocationModal';
@@ -217,6 +218,9 @@ export default function EntityManager({ snapshots, currentResult, chapterTitles,
         if (s.anthropicKey) aiSettings._apiKey = s.anthropicKey;
         if (s.ollamaUrl) aiSettings._ollamaUrl = s.ollamaUrl;
         if (s.model) aiSettings._model = s.model;
+        if (s.geminiKey) aiSettings._geminiKey = s.geminiKey;
+        if (s.openaiCompatibleUrl) aiSettings._openaiCompatibleUrl = s.openaiCompatibleUrl;
+        if (s.openaiCompatibleKey) aiSettings._openaiCompatibleKey = s.openaiCompatibleKey;
       } catch { /* server will use env vars */ }
 
       const res = await fetch('/api/reconcile-propose', {
@@ -302,8 +306,65 @@ export default function EntityManager({ snapshots, currentResult, chapterTitles,
     setRejectedIds(new Set());
   }
 
+  function quickScan(type: EntityTab) {
+    const entities = type === 'characters'
+      ? currentResult.characters.map((c) => ({ name: c.name, aliases: c.aliases }))
+      : type === 'locations'
+        ? (currentResult.locations ?? []).map((l) => ({ name: l.name, aliases: l.aliases }))
+        : (currentResult.arcs ?? []).map((a) => ({ name: a.name }));
+    const result = findStringDuplicates(entities, type);
+    setProposals(result);
+    setAcceptedIds(new Set());
+    setRejectedIds(new Set());
+    setProposalStatus('reviewing');
+  }
+
   function cancelEvaluate() {
     abortRef.current?.abort();
+  }
+
+  function removeAbsorbedName(proposalId: string, nameToRemove: string) {
+    setProposals((prev) => {
+      if (!prev) return prev;
+      const updated = prev.merges.map((m) => {
+        if (m.id !== proposalId) return m;
+        return {
+          ...m,
+          absorbedNames: m.absorbedNames.filter((n) => n !== nameToRemove),
+          combinedAliases: (m.combinedAliases ?? []).filter((a) => a.toLowerCase() !== nameToRemove.toLowerCase()),
+        };
+      });
+      const remaining = updated.filter((m) => m.absorbedNames.length > 0);
+      const droppedIds = prev.merges.filter((m) => m.id === proposalId && updated.find((u) => u.id === m.id)!.absorbedNames.length === 0).map((m) => m.id);
+      if (droppedIds.length > 0) {
+        setAcceptedIds((s) => { const next = new Set(s); droppedIds.forEach((id) => next.delete(id)); return next; });
+        setRejectedIds((s) => { const next = new Set(s); droppedIds.forEach((id) => next.delete(id)); return next; });
+      }
+      return { ...prev, merges: remaining };
+    });
+  }
+
+  function promoteToPrimary(proposalId: string, nameToPromote: string) {
+    setProposals((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        merges: prev.merges.map((m) => {
+          if (m.id !== proposalId) return m;
+          const oldPrimary = m.primaryName;
+          return {
+            ...m,
+            primaryName: nameToPromote,
+            absorbedNames: m.absorbedNames.filter((n) => n !== nameToPromote).concat(oldPrimary),
+            combinedAliases: m.combinedAliases
+              .filter((a) => a.toLowerCase() !== nameToPromote.toLowerCase())
+              .concat(
+                m.combinedAliases.some((a) => a.toLowerCase() === oldPrimary.toLowerCase()) ? [] : [oldPrimary]
+              ),
+          };
+        }),
+      };
+    });
   }
 
   function toggleAccept(id: string) {
@@ -494,6 +555,13 @@ export default function EntityManager({ snapshots, currentResult, chapterTitles,
           )}
           AI Evaluate
         </button>
+        <button
+          onClick={() => quickScan(entityTab)}
+          disabled={proposalStatus === 'loading' || proposalStatus === 'reviewing'}
+          className="text-xs px-3 py-1.5 rounded-lg border transition-colors border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/30 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Quick Scan
+        </button>
         {proposalStatus === 'loading' && evalProgress && (
           <span className="text-xs text-stone-500 dark:text-zinc-400 flex items-center gap-2">
             {evalProgress.entityCount != null && (
@@ -553,8 +621,26 @@ export default function EntityManager({ snapshots, currentResult, chapterTitles,
                     <div className="flex-1 min-w-0">
                       {type === 'merge' ? (
                         <>
-                          <p className="text-xs font-medium text-stone-700 dark:text-zinc-300">
-                            Merge {(item as MergeProposal).absorbedNames.map((n) => `"${n}"`).join(', ')} → "{(item as MergeProposal).primaryName}"
+                          <p className="text-xs font-medium text-stone-700 dark:text-zinc-300 flex items-center flex-wrap gap-1">
+                            <span>Merge</span>
+                            {(item as MergeProposal).absorbedNames.map((n) => (
+                              <span key={n} className="inline-flex items-center gap-0.5 bg-stone-100 dark:bg-zinc-800 rounded px-1">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); promoteToPrimary(item.id, n); }}
+                                  className="hover:text-violet-600 dark:hover:text-violet-400 cursor-pointer"
+                                  title={`Click to keep "${n}" instead`}
+                                >{n}</button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); removeAbsorbedName(item.id, n); }}
+                                  className="text-stone-400 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-[10px] leading-none ml-0.5"
+                                  title={`Remove "${n}" from this proposal`}
+                                >&times;</button>
+                              </span>
+                            ))}
+                            <span>→</span>
+                            <span className="inline-flex items-center gap-0.5 bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 rounded px-1 font-semibold">
+                              {(item as MergeProposal).primaryName}
+                            </span>
                           </p>
                           <p className="text-[11px] text-stone-400 dark:text-zinc-500 mt-0.5">{(item as MergeProposal).reason}</p>
                         </>
