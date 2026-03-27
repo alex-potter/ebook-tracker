@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+import { callLLM, resolveConfig } from '@/lib/llm';
 import type { NarrativeArc, ParentArc } from '@/types';
-
-const anthropic = new Anthropic();
 
 const PARENT_ARC_SCHEMA = `{
   "parentArcs": [
@@ -41,8 +39,7 @@ ${PARENT_ARC_SCHEMA}`;
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { bookTitle, bookAuthor, arcs, _provider, _apiKey, _model, _ollamaUrl } = body as {
+    const body = await req.json() as {
       bookTitle: string;
       bookAuthor: string;
       arcs: NarrativeArc[];
@@ -50,7 +47,11 @@ export async function POST(req: NextRequest) {
       _apiKey?: string;
       _model?: string;
       _ollamaUrl?: string;
+      _geminiKey?: string;
+      _openaiCompatibleUrl?: string;
+      _openaiCompatibleKey?: string;
     };
+    const { bookTitle, bookAuthor, arcs } = body;
 
     if (!arcs?.length) {
       return NextResponse.json({ parentArcs: [] });
@@ -60,34 +61,14 @@ export async function POST(req: NextRequest) {
     const arcNames = new Set(arcs.map((a) => a.name));
     const arcNamesLower = new Map(arcs.map((a) => [a.name.toLowerCase(), a.name]));
 
-    let text: string;
-
-    if (_provider === 'ollama') {
-      const ollamaUrl = _ollamaUrl || process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
-      const model = _model || 'llama3';
-      const res = await fetch(`${ollamaUrl}/api/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, prompt, stream: false }),
-      });
-      const data = await res.json();
-      text = data.response ?? '';
-    } else {
-      const apiKey = _apiKey || process.env.ANTHROPIC_API_KEY;
-      const model = _model || process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
-      const client = apiKey && apiKey !== process.env.ANTHROPIC_API_KEY
-        ? new Anthropic({ apiKey })
-        : anthropic;
-      const msg = await client.messages.create({
-        model,
-        max_tokens: 2048,
-        messages: [{ role: 'user', content: prompt }],
-      });
-      text = msg.content
-        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-        .map((b) => b.text)
-        .join('');
-    }
+    const config = resolveConfig(body, { defaultAnthropicModel: 'claude-sonnet-4-20250514' });
+    const { text } = await callLLM({
+      ...config,
+      system: '',
+      userPrompt: prompt,
+      maxTokens: 4096,
+      jsonMode: true,
+    });
 
     // Strip markdown fences if present
     const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();

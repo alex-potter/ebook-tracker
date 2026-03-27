@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
-import { Agent, fetch as undiciFetch } from 'undici';
 import type { LocationPin } from '@/types';
-
-const ollamaAgent = new Agent({ headersTimeout: 0, bodyTimeout: 0 });
-
+import { callLLM, resolveConfig } from '@/lib/llm';
 
 const SUPPORTED_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 
@@ -93,85 +89,42 @@ function extractPins(raw: string, imageWidth?: number, imageHeight?: number): Re
   return pins;
 }
 
-async function callLocal(imageDataUrl: string, prompt: string): Promise<string> {
-  const baseUrl = process.env.LOCAL_MODEL_URL ?? 'http://localhost:11434/v1';
-  const model = process.env.LOCAL_VISION_MODEL_NAME ?? 'qwen2.5vl:7b';
-
-  const res = await undiciFetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    dispatcher: ollamaAgent,
-    body: JSON.stringify({
-      model,
-      max_tokens: 4096,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'image_url', image_url: { url: imageDataUrl } },
-            { type: 'text', text: prompt },
-          ],
-        },
-      ],
-    }),
-  } as Parameters<typeof undiciFetch>[1]);
-
-  if (!res.ok) throw new Error(`Local model error (${res.status}): ${await res.text()}`);
-  const data = await res.json() as { choices?: { message?: { content?: string } }[] };
-  const text = data.choices?.[0]?.message?.content;
-  if (!text) throw new Error('No content in local model response.');
-  return text;
-}
-
-async function callAnthropic(
-  base64Data: string,
-  mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
-  prompt: string,
-): Promise<string> {
-  const anthropic = new Anthropic();
-  const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 4096,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } },
-          { type: 'text', text: prompt },
-        ],
-      },
-    ],
-  });
-  return response.content[0].type === 'text' ? response.content[0].text.trim() : '';
-}
-
 export async function POST(req: NextRequest) {
   try {
-    const { imageDataUrl, locations, imageWidth, imageHeight } = (await req.json()) as {
+    const body = await req.json() as {
       imageDataUrl: string;
       locations: string[];
       imageWidth?: number;
       imageHeight?: number;
+      _provider?: string;
+      _apiKey?: string;
+      _ollamaUrl?: string;
+      _model?: string;
+      _geminiKey?: string;
+      _openaiCompatibleUrl?: string;
+      _openaiCompatibleKey?: string;
     };
+    const { imageDataUrl, locations, imageWidth, imageHeight } = body;
 
     if (!imageDataUrl || !locations?.length) {
       return NextResponse.json({ error: 'Missing imageDataUrl or locations' }, { status: 400 });
     }
 
-    const commaIdx = imageDataUrl.indexOf(',');
-    const header = imageDataUrl.slice(0, commaIdx);
-    const base64Data = imageDataUrl.slice(commaIdx + 1);
-    const rawType = header.match(/data:([^;]+)/)?.[1] ?? 'image/png';
-    const mediaType = SUPPORTED_TYPES.has(rawType)
-      ? (rawType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp')
-      : 'image/png';
-
     const prompt = buildPrompt(locations);
-    const useLocal = process.env.USE_LOCAL_MODEL === 'true';
+    const config = resolveConfig(body, { useVisionModel: true });
 
-    const raw = useLocal
-      ? await callLocal(imageDataUrl, prompt)
-      : await callAnthropic(base64Data, mediaType, prompt);
+    const commaIdx = imageDataUrl.indexOf(',');
+    const base64Data = imageDataUrl.slice(commaIdx + 1);
+    const rawType = imageDataUrl.slice(0, commaIdx).match(/data:([^;]+)/)?.[1] ?? 'image/png';
+    const mediaType = SUPPORTED_TYPES.has(rawType) ? rawType : 'image/png';
+
+    const { text: raw } = await callLLM({
+      ...config,
+      system: '',
+      userPrompt: prompt,
+      maxTokens: 4096,
+      images: [{ data: base64Data, mimeType: mediaType }],
+    });
 
     const cleaned = raw.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
     console.log('[detect-pins] raw response:', cleaned.slice(0, 500));

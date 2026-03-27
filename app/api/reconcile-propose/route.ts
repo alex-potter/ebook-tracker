@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
-import { Agent, fetch as undiciFetch } from 'undici';
 import type { AnalysisResult } from '@/types';
 import {
   CHAR_RECONCILE_SYSTEM, buildCharReconcilePrompt,
@@ -10,80 +8,9 @@ import {
   type ReconcileResult, type CharSplitEntry, type LocSplitEntry, type ArcSplitEntry,
   type ReconcileProposals,
 } from '@/lib/reconcile';
+import { callLLM, resolveConfig } from '@/lib/llm';
 
-// ─── LLM infrastructure (mirrored from reconcile/route.ts) ──────────────────
-
-const ollamaAgent = new Agent({ headersTimeout: 0, bodyTimeout: 0 });
-const anthropic = new Anthropic();
-
-type CallOpts = { baseUrl?: string; model?: string } | { apiKey?: string; model?: string };
-
-async function callAnthropic(system: string, userPrompt: string, opts: { apiKey?: string; model?: string } = {}): Promise<string> {
-  const client = opts.apiKey ? new Anthropic({ apiKey: opts.apiKey }) : anthropic;
-  const model = opts.model ?? 'claude-haiku-4-5-20251001';
-  let fullText = '';
-
-  for (let pass = 0; pass < 5; pass++) {
-    const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [
-      { role: 'user', content: userPrompt },
-    ];
-    if (fullText) {
-      messages.push({ role: 'assistant', content: fullText });
-    }
-
-    const response = await client.messages.create({
-      model,
-      max_tokens: 16384,
-      temperature: 0,
-      system,
-      messages,
-    });
-
-    const block = response.content.find((b) => b.type === 'text');
-    if (!block || block.type !== 'text') break;
-    fullText += block.text;
-
-    if (response.stop_reason !== 'max_tokens') break;
-    console.log(`[reconcile-propose] Response hit max_tokens, continuing (pass ${pass + 1})…`);
-  }
-
-  if (!fullText) throw new Error('No text response from Anthropic.');
-  return fullText;
-}
-
-async function callLocal(system: string, userPrompt: string, opts: { baseUrl?: string; model?: string } = {}, maxTokens = 16384): Promise<string> {
-  const baseUrl = opts.baseUrl ?? process.env.LOCAL_MODEL_URL ?? 'http://localhost:11434/v1';
-  const model = opts.model ?? process.env.LOCAL_MODEL_NAME ?? 'llama3.1:8b';
-  const res = await undiciFetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    dispatcher: ollamaAgent,
-    body: JSON.stringify({
-      model,
-      temperature: 0,
-      max_tokens: maxTokens,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: userPrompt },
-      ],
-    }),
-  } as Parameters<typeof undiciFetch>[1]);
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Local model error (${res.status}): ${err}`);
-  }
-  const data = await res.json() as { choices?: { message?: { content?: string } }[] };
-  const text = data.choices?.[0]?.message?.content;
-  if (!text) throw new Error('No content in local model response.');
-  return text;
-}
-
-function callLLM(system: string, userPrompt: string, useLocal: boolean, callOpts: CallOpts): Promise<string> {
-  return useLocal
-    ? callLocal(system, userPrompt, callOpts as { baseUrl?: string; model?: string })
-    : callAnthropic(system, userPrompt, callOpts as { apiKey?: string; model?: string });
-}
+// ─── JSON parsing helpers ────────────────────────────────────────────────────
 
 function extractJsonArray(raw: string, fieldName: string): unknown[] {
   const key = `"${fieldName}"`;
@@ -126,10 +53,10 @@ function recoverPartialResponse(raw: string): Record<string, unknown> | null {
 }
 
 async function callAndParseJSON<T>(
-  system: string, userPrompt: string, useLocal: boolean, callOpts: CallOpts, label: string,
+  system: string, userPrompt: string, config: ReturnType<typeof resolveConfig>, label: string,
 ): Promise<T | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
-    const raw = await callLLM(system, userPrompt, useLocal, callOpts);
+    const { text: raw } = await callLLM({ ...config, system, userPrompt, maxTokens: 16384, jsonMode: true });
     let cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
     const firstBrace = cleaned.indexOf('{');
     const lastBrace = cleaned.lastIndexOf('}');
@@ -139,14 +66,11 @@ async function callAndParseJSON<T>(
     } catch {
       const recovered = recoverPartialResponse(cleaned);
       if (recovered && Object.keys(recovered).length > 0) {
-        console.log(`[reconcile-propose] ${label}: recovered partial JSON (keys: ${Object.keys(recovered).join(', ')})`);
+        console.log(`[reconcile-propose] ${label}: recovered partial JSON`);
         return recovered as T;
       }
-      if (attempt === 0) {
-        console.warn(`[reconcile-propose] ${label}: parse failed, retrying…`);
-      } else {
-        console.warn(`[reconcile-propose] ${label}: all attempts failed. Preview:`, cleaned.slice(-200));
-      }
+      if (attempt === 0) console.warn(`[reconcile-propose] ${label}: parse failed, retrying…`);
+      else console.warn(`[reconcile-propose] ${label}: all attempts failed.`);
     }
   }
   return null;
@@ -162,30 +86,18 @@ export async function POST(req: NextRequest) {
       bookTitle: string;
       bookAuthor: string;
       chapterExcerpts?: string;
-      _provider?: 'anthropic' | 'ollama';
+      _provider?: string;
       _apiKey?: string;
       _ollamaUrl?: string;
       _model?: string;
+      _geminiKey?: string;
+      _openaiCompatibleUrl?: string;
+      _openaiCompatibleKey?: string;
     };
-    const { entityType, result, bookTitle, bookAuthor, chapterExcerpts, _provider, _apiKey, _ollamaUrl, _model } = body;
+    const { entityType, result, bookTitle, bookAuthor, chapterExcerpts } = body;
 
     if (!entityType || !result) {
       return NextResponse.json({ error: 'Missing entityType or result.' }, { status: 400 });
-    }
-
-    const serverHasKey = !!process.env.ANTHROPIC_API_KEY;
-    const serverUsesLocal = process.env.USE_LOCAL_MODEL === 'true';
-    const serverConfigured = serverHasKey || serverUsesLocal;
-    const useLocal = serverConfigured ? serverUsesLocal : (_provider !== 'anthropic');
-    const callOpts: CallOpts = useLocal
-      ? { baseUrl: process.env.LOCAL_MODEL_URL ?? _ollamaUrl, model: process.env.LOCAL_MODEL_NAME ?? _model }
-      : { apiKey: process.env.ANTHROPIC_API_KEY ?? _apiKey, model: _model };
-
-    if (!useLocal && !(callOpts as { apiKey?: string }).apiKey) {
-      return NextResponse.json(
-        { error: 'No Anthropic API key configured.' },
-        { status: 400 },
-      );
     }
 
     let system: string;
@@ -217,6 +129,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Unknown entityType: ${entityType}` }, { status: 400 });
     }
 
+    const config = resolveConfig(body);
+
     const stream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
@@ -225,7 +139,7 @@ export async function POST(req: NextRequest) {
           emit({ phase: 'preparing', entityCount: entities.length, entityType });
           emit({ phase: 'calling_ai' });
           const rawResult = await callAndParseJSON<ReconcileResult<CharSplitEntry | LocSplitEntry | ArcSplitEntry>>(
-            system, userPrompt, useLocal, callOpts, `${entityType}-propose`,
+            system, userPrompt, config, `${entityType}-propose`,
           );
           emit({ phase: 'parsing' });
           const proposals = (!rawResult || (!rawResult.mergeGroups?.length && !rawResult.splits?.length))
