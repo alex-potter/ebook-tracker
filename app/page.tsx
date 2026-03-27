@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { parseEpub } from '@/lib/epub-parser';
-import type { AnalysisResult, Character, MapState, ParsedEbook, PinUpdates, QueueJob, Snapshot } from '@/types';
+import type { AnalysisResult, Character, MapState, ParentArc, ParsedEbook, PinUpdates, QueueJob, Snapshot } from '@/types';
 import CalibreLibrary from '@/components/CalibreLibrary';
 import CharacterCard from '@/components/CharacterCard';
 import ChapterSelector from '@/components/ChapterSelector';
@@ -48,6 +48,7 @@ interface StoredBookState {
   chapterRange?: { start: number; end: number }; // inclusive chapter index range for analysis
   bookMeta?: BookMeta;
   readingBookmark?: number; // user-set "read up to" chapter index (inclusive)
+  parentArcs?: ParentArc[];
 }
 
 interface SavedBookEntry {

@@ -63,6 +63,12 @@ export interface NarrativeArc {
   summary: string;        // current state of this arc
 }
 
+export interface ParentArc {
+  name: string;
+  children: string[];  // child arc names, ordered
+  summary: string;     // AI-generated summary of the grouped theme
+}
+
 export interface AnalysisResult {
   characters: Character[];
   locations?: LocationInfo[];
