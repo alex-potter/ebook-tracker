@@ -227,13 +227,22 @@ function buildGraph(snapshots: Snapshot[], locationMergeMap?: Map<string, string
 
   // Remap locArc values to parent arc names when parentArcs are available
   if (parentArcs?.length) {
-    const childToParent = new Map<string, string>();
+    // Build case-insensitive canonical name lookup and child→parent mapping
+    const canonicalName = new Map<string, string>(); // lowercase → validated NarrativeArc.name
+    const childToParent = new Map<string, string>(); // lowercase child name → parent arc name
     for (const pa of parentArcs) {
-      for (const child of pa.children) childToParent.set(child.toLowerCase(), pa.name);
+      for (const child of pa.children) {
+        const lower = child.toLowerCase();
+        canonicalName.set(lower, child);
+        childToParent.set(lower, pa.name);
+      }
     }
+    // Two-step lookup: resolve free-text LocationInfo.arc → canonical name → parent
     const parentLocArc = new Map<string, string>();
     for (const [loc, arcName] of locArc) {
-      const parentName = childToParent.get(arcName.toLowerCase());
+      const lower = arcName.toLowerCase();
+      const resolved = canonicalName.get(lower); // free-text → validated name
+      const parentName = resolved ? childToParent.get(resolved.toLowerCase()) : undefined;
       parentLocArc.set(loc, parentName ?? arcName);
     }
     locArc.clear();
