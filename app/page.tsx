@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { parseEpub } from '@/lib/epub-parser';
-import type { AnalysisResult, Character, MapState, ParentArc, ParsedEbook, PinUpdates, QueueJob, Snapshot } from '@/types';
+import type { AnalysisResult, Character, MapState, NarrativeArc, ParentArc, ParsedEbook, PinUpdates, QueueJob, Snapshot } from '@/types';
 import CalibreLibrary from '@/components/CalibreLibrary';
 import CharacterCard from '@/components/CharacterCard';
 import ChapterSelector from '@/components/ChapterSelector';
@@ -278,6 +278,53 @@ async function reconcileResult(
   const data = await res.json();
   if (!res.ok) throw new Error((data as { error?: string }).error ?? 'Reconciliation failed.');
   return data as AnalysisResult;
+}
+
+async function generateParentArcs(
+  bookTitle: string,
+  bookAuthor: string,
+  arcs: NarrativeArc[],
+): Promise<ParentArc[]> {
+  if (!arcs?.length) return [];
+
+  let aiSettings: Record<string, string> = {};
+  try {
+    const { loadAiSettings } = await import('@/lib/ai-client');
+    const s = loadAiSettings();
+    if (s.provider) aiSettings._provider = s.provider;
+    if (s.anthropicKey) aiSettings._apiKey = s.anthropicKey;
+    if (s.ollamaUrl) aiSettings._ollamaUrl = s.ollamaUrl;
+    if (s.model) aiSettings._model = s.model;
+  } catch { /* ignore */ }
+
+  const res = await fetch('/api/group-arcs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bookTitle, bookAuthor, arcs, ...aiSettings }),
+  });
+  if (!res.ok) throw new Error('Failed to group arcs');
+  const data = await res.json() as { parentArcs: ParentArc[] };
+  return data.parentArcs;
+}
+
+/** Fire parent arc grouping if the book is fully analyzed. Returns the (possibly updated) stored state. */
+async function maybeGenerateParentArcs(
+  stored: StoredBookState,
+  bookTitle: string,
+  bookAuthor: string,
+  rangeEnd: number,
+  cancelled: boolean,
+): Promise<StoredBookState> {
+  if (cancelled) return stored;
+  if (stored.lastAnalyzedIndex < rangeEnd) return stored;
+  if (!stored.result.arcs?.length) return stored;
+  try {
+    const parentArcs = await generateParentArcs(bookTitle, bookAuthor, stored.result.arcs);
+    return { ...stored, parentArcs };
+  } catch (e) {
+    console.warn('[parent-arcs] Generation failed:', e);
+    return stored;
+  }
 }
 
 export default function Home() {
@@ -663,6 +710,18 @@ export default function Home() {
           }
         }
 
+        // Generate parent arcs after full book processing
+        if (accumulated?.arcs?.length) {
+          try {
+            const parentArcs = await generateParentArcs(title, author, accumulated.arcs);
+            latestStored = { ...latestStored, parentArcs };
+            saveStored(title, author, latestStored);
+            if (bookRef.current?.title === title && bookRef.current?.author === author) {
+              storedRef.current = latestStored;
+            }
+          } catch (e) { console.warn('[parent-arcs] Queue generation failed:', e); }
+        }
+
         setQueue((q) => q.map((j) => j.id === id ? { ...j, status: 'done' as const, progress: undefined } : j));
       } catch (err) {
         setQueue((q) => q.map((j) => j.id === id
@@ -908,6 +967,12 @@ export default function Home() {
         setResult(accumulated);
         setViewingSnapshotIndex(null);
       }
+
+      // Generate parent arcs if all chapters in range are now analyzed
+      const rEnd = chapterRange?.end ?? (book.chapters.length - 1);
+      const withParents = await maybeGenerateParentArcs(storedRef.current!, book.title, book.author, rEnd, analyzeCancelRef.current);
+      storedRef.current = withParents;
+      saveStored(book.title, book.author, withParents);
     } catch (err) {
       setAnalyzeError(err instanceof Error ? err.message : 'Analysis failed.');
     } finally {
@@ -948,6 +1013,11 @@ export default function Home() {
         setResult(accumulated);
         setViewingSnapshotIndex(null);
       }
+
+      const rEnd = chapterRange?.end ?? (book.chapters.length - 1);
+      const withParents = await maybeGenerateParentArcs(storedRef.current!, book.title, book.author, rEnd, rebuildCancelRef.current);
+      storedRef.current = withParents;
+      saveStored(book.title, book.author, withParents);
     } catch (err) {
       setAnalyzeError(err instanceof Error ? err.message : 'Rebuild failed.');
     } finally {
@@ -990,6 +1060,11 @@ export default function Home() {
         setCurrentIndex(i);
         setViewingSnapshotIndex(null);
       }
+
+      const rEnd = chapterRange?.end ?? (book.chapters.length - 1);
+      const withParents = await maybeGenerateParentArcs(storedRef.current!, book.title, book.author, rEnd, rebuildCancelRef.current);
+      storedRef.current = withParents;
+      saveStored(book.title, book.author, withParents);
     } catch (err) {
       setAnalyzeError(err instanceof Error ? err.message : 'Process failed.');
     } finally {
