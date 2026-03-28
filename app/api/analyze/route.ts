@@ -113,7 +113,7 @@ const LOCATION_SCHEMA = `{
       "name": "Broad canonical place name — city, castle, region, planet, ship (NOT a generic room, corridor, or sub-location). Prefer the containing location over sub-locations.",
       "aliases": ["shorter or alternate names readers use for this place — e.g. 'Ceres' for 'Ceres Station', 'the Pits' for 'Hellas Basin'"],
       "description": "1–2 sentence description of this place — what kind of place it is, its significance, atmosphere, or notable features as established in the text",
-      "recentEvents": "1–2 sentences describing what happened at this location in the current chapter. Omit if nothing notable occurred here.",
+      "recentEvents": "1–2 sentences describing what happened at this location in the current chapter. Always provide this — if you extracted this location, something relevant happened here.",
       "relationships": [
         { "location": "Another location name", "relationship": "How these places relate — e.g. 'contains', 'part of', 'adjacent to', 'connected by road to', 'visible from', 'governs', 'supplies'" }
       ]
@@ -128,7 +128,7 @@ const LOCATION_DELTA_SCHEMA = `{
       "name": "Broad canonical place name — city, castle, region, planet, ship. Use an EXISTING LOCATION NAME if the place is the same, nearby, or contained within it.",
       "aliases": ["shorter or alternate names readers use for this place — only include if genuinely used in the text"],
       "description": "1–2 sentence description of this place as revealed so far",
-      "recentEvents": "1–2 sentences describing what happened at this location in this chapter. Omit if nothing notable occurred here.",
+      "recentEvents": "1–2 sentences describing what happened at this location in this chapter. Always provide this — if you extracted this location, something relevant happened here.",
       "relationships": [
         { "location": "Another location name", "relationship": "How these places relate" }
       ]
