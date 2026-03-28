@@ -16,6 +16,7 @@ export interface ContextConfig {
   model: string;
   baseUrl?: string;
   apiKey?: string;
+  contextLengthOverride?: number; // user-set context length (Ollama only)
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -140,32 +141,41 @@ async function getOpenAICompatibleContextWindow(model: string, baseUrl?: string,
 // ─── Unified context window detection ────────────────────────────────────────
 
 /** Detect the context window size (in tokens) for the given provider and model. */
-export async function getContextWindow(config: ContextConfig): Promise<number> {
+export async function getContextWindow(config: ContextConfig): Promise<{ contextWindow: number; source: 'user-override' | 'auto-detected' }> {
   switch (config.provider) {
-    case 'ollama':
-      return getOllamaContextWindow(config.model, config.baseUrl);
+    case 'ollama': {
+      if (config.contextLengthOverride && config.contextLengthOverride > 0) {
+        console.log(`[context-window] Ollama model ${config.model}: context=${config.contextLengthOverride} (user override)`);
+        return { contextWindow: config.contextLengthOverride, source: 'user-override' };
+      }
+      const detected = await getOllamaContextWindow(config.model, config.baseUrl);
+      console.log(`[context-window] Ollama model ${config.model}: context=${detected} (auto-detected)`);
+      return { contextWindow: detected, source: 'auto-detected' };
+    }
 
     case 'anthropic': {
-      if (ANTHROPIC_CONTEXT[config.model]) return ANTHROPIC_CONTEXT[config.model];
+      if (ANTHROPIC_CONTEXT[config.model]) return { contextWindow: ANTHROPIC_CONTEXT[config.model], source: 'auto-detected' };
       for (const [prefix, ctx] of Object.entries(ANTHROPIC_CONTEXT)) {
-        if (config.model.startsWith(prefix.split('-').slice(0, -1).join('-'))) return ctx;
+        if (config.model.startsWith(prefix.split('-').slice(0, -1).join('-'))) return { contextWindow: ctx, source: 'auto-detected' };
       }
-      return ANTHROPIC_DEFAULT_CTX;
+      return { contextWindow: ANTHROPIC_DEFAULT_CTX, source: 'auto-detected' };
     }
 
     case 'gemini': {
-      if (GEMINI_CONTEXT[config.model]) return GEMINI_CONTEXT[config.model];
+      if (GEMINI_CONTEXT[config.model]) return { contextWindow: GEMINI_CONTEXT[config.model], source: 'auto-detected' };
       for (const [prefix, ctx] of Object.entries(GEMINI_CONTEXT)) {
-        if (config.model.startsWith(prefix)) return ctx;
+        if (config.model.startsWith(prefix)) return { contextWindow: ctx, source: 'auto-detected' };
       }
-      return GEMINI_DEFAULT_CTX;
+      return { contextWindow: GEMINI_DEFAULT_CTX, source: 'auto-detected' };
     }
 
-    case 'openai-compatible':
-      return getOpenAICompatibleContextWindow(config.model, config.baseUrl, config.apiKey);
+    case 'openai-compatible': {
+      const ctx = await getOpenAICompatibleContextWindow(config.model, config.baseUrl, config.apiKey);
+      return { contextWindow: ctx, source: 'auto-detected' };
+    }
 
     default:
-      return OLLAMA_DEFAULT_CTX;
+      return { contextWindow: OLLAMA_DEFAULT_CTX, source: 'auto-detected' };
   }
 }
 
