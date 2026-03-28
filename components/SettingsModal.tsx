@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { loadAiSettings, saveAiSettings, testConnection, diagnoseOllamaConnection, type AiSettings } from '@/lib/ai-client';
 
 interface Props {
@@ -22,6 +22,9 @@ export default function SettingsModal({ onClose }: Props) {
   const [testState, setTestState] = useState<TestState>('idle');
   const [testMsg, setTestMsg] = useState('');
   const [guideOpen, setGuideOpen] = useState(false);
+  const [detectedCtx, setDetectedCtx] = useState<number | null>(settings.ollamaDetectedContextLength ?? null);
+  const [detectingCtx, setDetectingCtx] = useState(false);
+  const [detectError, setDetectError] = useState(false);
 
   function set<K extends keyof AiSettings>(key: K, value: AiSettings[K]) {
     setSettings((prev) => ({ ...prev, [key]: value }));
@@ -57,11 +60,52 @@ export default function SettingsModal({ onClose }: Props) {
       const reply = await testConnection(settings);
       setTestState('ok');
       setTestMsg(reply.slice(0, 80));
+      // After successful connection, detect context window
+      if (settings.provider === 'ollama') {
+        detectContextLength();
+      }
     } catch (err) {
       setTestState('error');
       setTestMsg(err instanceof Error ? err.message : 'Connection failed');
     }
   }
+
+  async function detectContextLength(url?: string, model?: string) {
+    const baseUrl = url ?? settings.ollamaUrl;
+    const modelName = model ?? settings.model;
+    if (!baseUrl || !modelName) return;
+    setDetectingCtx(true);
+    setDetectError(false);
+    try {
+      const { detectOllamaContextWindow } = await import('@/lib/ai-client');
+      const detected = await detectOllamaContextWindow(baseUrl, modelName);
+      if (detected) {
+        setDetectedCtx(detected);
+        setSettings((prev) => ({
+          ...prev,
+          ollamaDetectedContextLength: detected,
+          // Only set the slider value if user hasn't overridden it
+          ...(prev.ollamaContextLength ? {} : { ollamaContextLength: detected }),
+        }));
+      } else {
+        setDetectedCtx(null);
+        setDetectError(true);
+      }
+    } catch {
+      setDetectedCtx(null);
+      setDetectError(true);
+    } finally {
+      setDetectingCtx(false);
+    }
+  }
+
+  // Auto-detect context length when modal opens with Ollama selected
+  useEffect(() => {
+    if (settings.provider === 'ollama' && settings.ollamaUrl && settings.model && !detectedCtx) {
+      detectContextLength();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onClick={onClose}>
@@ -121,7 +165,10 @@ export default function SettingsModal({ onClose }: Props) {
               <input
                 type="text"
                 value={settings.model}
-                onChange={(e) => set('model', e.target.value)}
+                onChange={(e) => {
+                  set('model', e.target.value);
+                  setSettings((prev) => ({ ...prev, model: e.target.value, ollamaContextLength: undefined }));
+                }}
                 placeholder="qwen2.5:14b"
                 className="w-full bg-stone-100 dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-stone-800 dark:text-zinc-200 focus:outline-none focus:border-amber-500/50"
               />
@@ -129,13 +176,72 @@ export default function SettingsModal({ onClose }: Props) {
                 {OLLAMA_MODELS.map((m) => (
                   <button
                     key={m}
-                    onClick={() => set('model', m)}
+                    onClick={() => {
+                      set('model', m);
+                      // Reset context override when model changes, then detect new default
+                      setSettings((prev) => ({ ...prev, model: m, ollamaContextLength: undefined }));
+                      detectContextLength(undefined, m);
+                    }}
                     className={`px-2 py-0.5 rounded text-[11px] font-mono border transition-colors ${settings.model === m ? 'border-amber-500/50 bg-amber-500/10 text-amber-400' : 'border-stone-300 dark:border-zinc-700 text-stone-400 dark:text-zinc-600 hover:border-stone-400 dark:hover:border-zinc-500 hover:text-stone-600 dark:hover:text-zinc-400'}`}
                   >
                     {m}
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Context Length */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-medium text-stone-400 dark:text-zinc-500">Context Length (tokens)</label>
+                {settings.ollamaContextLength && detectedCtx && settings.ollamaContextLength !== detectedCtx && (
+                  <button
+                    onClick={() => {
+                      setSettings((prev) => ({ ...prev, ollamaContextLength: detectedCtx }));
+                      setSaved(false);
+                    }}
+                    className="text-[10px] text-amber-400 hover:text-amber-300 transition-colors"
+                  >
+                    Reset to detected
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={2048}
+                  max={131072}
+                  step={1024}
+                  value={settings.ollamaContextLength ?? detectedCtx ?? 4096}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    setSettings((prev) => ({ ...prev, ollamaContextLength: val }));
+                    setSaved(false);
+                  }}
+                  className="flex-1 accent-amber-500"
+                />
+                <input
+                  type="number"
+                  min={2048}
+                  max={131072}
+                  step={1024}
+                  value={settings.ollamaContextLength ?? detectedCtx ?? 4096}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (!isNaN(val) && val >= 2048) {
+                      setSettings((prev) => ({ ...prev, ollamaContextLength: val }));
+                      setSaved(false);
+                    }
+                  }}
+                  className="w-24 bg-stone-100 dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-stone-800 dark:text-zinc-200 text-right font-mono focus:outline-none focus:border-amber-500/50"
+                />
+              </div>
+              <p className="mt-1 text-[10px] text-stone-400 dark:text-zinc-600">
+                {detectingCtx ? 'Detecting…' : detectError ? 'Could not detect — using default 4096. Adjust to match your Ollama setting.' : detectedCtx ? `Auto-detected: ${detectedCtx.toLocaleString()}` : 'Set this to match the context length in your Ollama app.'}
+                {settings.ollamaContextLength && detectedCtx && settings.ollamaContextLength !== detectedCtx && (
+                  <span className="ml-1 text-amber-500/70">(overridden)</span>
+                )}
+              </p>
             </div>
 
             {/* Ollama Setup Guide */}
