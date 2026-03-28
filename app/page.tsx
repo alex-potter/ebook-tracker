@@ -221,7 +221,7 @@ async function analyzeChapter(
   }
 
   // Include client-side AI settings so server can use them when env vars aren't set
-  let aiSettings: Record<string, string> = {};
+  let aiSettings: Record<string, string | number> = {};
   try {
     const { loadAiSettings } = await import('@/lib/ai-client');
     const s = loadAiSettings();
@@ -232,6 +232,7 @@ async function analyzeChapter(
     if (s.geminiKey) aiSettings._geminiKey = s.geminiKey;
     if (s.openaiCompatibleUrl) aiSettings._openaiCompatibleUrl = s.openaiCompatibleUrl;
     if (s.openaiCompatibleKey) aiSettings._openaiCompatibleKey = s.openaiCompatibleKey;
+    if (s.ollamaContextLength) aiSettings._ollamaContextLength = s.ollamaContextLength;
   } catch { /* ignore — server will use env vars */ }
 
   const body = previousResult
