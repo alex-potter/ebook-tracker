@@ -139,14 +139,14 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
     const curNames = new Set(present.map((c) => c.name));
     const charsChanged = present.length !== prevCharNames.size || [...curNames].some((n) => !prevCharNames.has(n));
     const hasEvents = !!locInfo?.recentEvents;
-    if (present.length > 0 && (charsChanged || hasEvents)) {
+    if (hasEvents || (present.length > 0 && charsChanged)) {
       timeline.push({
         chapterIndex: snap.index,
         locationEvents: locInfo?.recentEvents,
         characters: present.map((c) => ({ name: c.name, status: c.status })),
       });
     }
-    prevCharNames = present.length > 0 ? curNames : new Set();
+    if (present.length > 0) prevCharNames = curNames;
   }
   const timelineReversed = [...timeline].reverse();
 
