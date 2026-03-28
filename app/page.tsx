@@ -180,6 +180,7 @@ function listSavedBooks(excludeTitle?: string, excludeAuthor?: string): SavedBoo
 }
 
 const IS_MOBILE = process.env.NEXT_PUBLIC_MOBILE === 'true';
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? 'dev';
 
 const FRONT_MATTER_RE = /^\s*(acknowledgements?|acknowledgments?|foreword|fore\s*word|preface|dedication|about\s+the\s+author|author'?s?\s+note|note\s+(from|by)\s+the\s+author|copyright|contents|table\s+of\s+contents|cast\s+of\s+characters|dramatis\s+personae|maps?|part\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|i{1,3}|iv|vi{0,3}|ix))\s*$/i;
@@ -1552,7 +1553,7 @@ export default function Home() {
               <rect y="12" width="18" height="2" rx="1" fill="currentColor"/>
             </svg>
           </button>
-          <span className="text-xl flex-shrink-0">📖</span>
+          <img src={`${basePath}/icon.svg`} alt="BookBuddy" className="w-6 h-6 flex-shrink-0 dark:invert" />
           <div className="min-w-0">
             <h1 className="font-bold text-stone-900 dark:text-zinc-100 leading-tight truncate text-sm sm:text-base">{book.title}</h1>
             <p className="text-xs text-stone-400 dark:text-zinc-500 truncate">{book.author}</p>
