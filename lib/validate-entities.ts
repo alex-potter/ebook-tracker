@@ -36,15 +36,15 @@ export function validateCharactersAgainstText(
       return textLower.includes(nameLower);
     });
 
-    // Fallback for multi-word names: check individual significant words.
-    // Require the LAST word (most likely a surname/distinctive identifier) to appear,
-    // not just any word — otherwise generic titles like "Lord", "Sir", "Captain"
-    // let hallucinated names through.
+    // Fallback for multi-word names: check the LONGEST word (most distinctive).
+    // Generic titles like "Lord", "Sir", "Captain" are short and filtered by the
+    // length >= 3 requirement, while distinctive identifiers like "Stormblessed"
+    // or "Shattered" are typically the longest word in the name.
     if (!isGrounded && char.name.split(/\s+/).length > 1) {
       const words = char.name.split(/\s+/).filter((w) => w.length >= 3);
       if (words.length > 0) {
-        const surname = words[words.length - 1];
-        const pattern = new RegExp(`\\b${escapeRegex(surname.toLowerCase())}\\b`, 'i');
+        const longest = words.reduce((a, b) => (a.length >= b.length ? a : b));
+        const pattern = new RegExp(`\\b${escapeRegex(longest.toLowerCase())}\\b`, 'i');
         isGrounded = pattern.test(chapterText);
       }
     }
@@ -86,12 +86,14 @@ export function validateLocationsAgainstText(
       return textLower.includes(nameLower);
     });
 
-    // Fallback for multi-word names: check last word (most distinctive part)
+    // Fallback for multi-word names: check the LONGEST word (most distinctive).
+    // Place-type suffixes like "Plains", "Hills", "City" are often generic,
+    // while the longest word (e.g. "Shattered", "Unclaimed") is more distinctive.
     if (!isGrounded && loc.name.split(/\s+/).length > 1) {
       const words = loc.name.split(/\s+/).filter((w) => w.length >= 3);
       if (words.length > 0) {
-        const lastWord = words[words.length - 1];
-        const pattern = new RegExp(`\\b${escapeRegex(lastWord.toLowerCase())}\\b`, 'i');
+        const longest = words.reduce((a, b) => (a.length >= b.length ? a : b));
+        const pattern = new RegExp(`\\b${escapeRegex(longest.toLowerCase())}\\b`, 'i');
         isGrounded = pattern.test(chapterText);
       }
     }
