@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import type { AnalysisResult, Character, Snapshot } from '@/types';
 import { aggregateEntities } from '@/lib/aggregate-entities';
 import type { AggregatedCharacter, AggregatedLocation, AggregatedArc } from '@/lib/aggregate-entities';
-import { buildLocationAliasMap, resolveLocationName, withResolvedLocations } from '@/lib/resolve-locations';
+import { buildLocationAliasMap, resolveLocationName, withResolvedLocations, resolveCharacterLocationsToExtracted } from '@/lib/resolve-locations';
 
 export interface LocationGroup {
   location: string;
@@ -46,9 +46,15 @@ export function useDerivedEntities(
     // 2. Resolved characters (backfill unknown locations)
     const resolvedCharacters = withResolvedLocations(currentResult.characters, snapshots);
 
+    // 2b. Resolve sub-locations to extracted canonical locations
+    const locResolvedCharacters = resolveCharacterLocationsToExtracted(
+      resolvedCharacters,
+      currentResult.locations ?? [],
+    );
+
     // 3. Location groups
     const seen = new Map<string, Character[]>();
-    for (const c of resolvedCharacters) {
+    for (const c of locResolvedCharacters) {
       const loc = resolveLoc(c.currentLocation) || 'Unknown';
       if (!seen.has(loc)) seen.set(loc, []);
       seen.get(loc)!.push(c);

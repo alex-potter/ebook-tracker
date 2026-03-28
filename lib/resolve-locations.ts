@@ -99,3 +99,49 @@ export function withResolvedLocations(
     return c;
   });
 }
+
+/**
+ * Remap character currentLocation values that don't match any extracted location
+ * to a matching extracted location, using description-based matching as fallback.
+ * This catches cases where the LLM sets currentLocation to a generic sub-location
+ * (e.g. "castle", "feast hall") instead of the canonical location name.
+ */
+export function resolveCharacterLocationsToExtracted(
+  characters: Character[],
+  locations: LocationInfo[],
+): Character[] {
+  if (!locations?.length) return characters;
+
+  // Build a set of known location names and aliases (lowercased)
+  const knownNames = new Set<string>();
+  for (const loc of locations) {
+    knownNames.add(loc.name.toLowerCase().trim());
+    for (const alias of loc.aliases ?? []) {
+      knownNames.add(alias.toLowerCase().trim());
+    }
+  }
+
+  return characters.map((c) => {
+    const curLoc = c.currentLocation?.trim();
+    if (!curLoc || curLoc === 'Unknown') return c;
+
+    // Already matches a known location name/alias
+    if (knownNames.has(curLoc.toLowerCase())) return c;
+
+    // Fallback 1: check if currentLocation appears in any location's description
+    const curLocLower = curLoc.toLowerCase();
+    const descMatches = locations.filter((l) =>
+      l.description?.toLowerCase().includes(curLocLower),
+    );
+    if (descMatches.length === 1) {
+      return { ...c, currentLocation: descMatches[0].name };
+    }
+
+    // Fallback 2: if only one location was extracted, use it
+    if (locations.length === 1) {
+      return { ...c, currentLocation: locations[0].name };
+    }
+
+    return c;
+  });
+}

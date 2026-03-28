@@ -6,6 +6,7 @@ import { escapeRegex, validateCharactersAgainstText, validateLocationsAgainstTex
 import { callLLM, resolveConfig, type LLMResult } from '@/lib/llm';
 import { getContextWindow, splitChapterText, computeTextBudget } from '@/lib/context-window';
 import type { ProviderType } from '@/lib/rate-limiter';
+import { resolveCharacterLocationsToExtracted } from '@/lib/resolve-locations';
 
 // ─── System prompts (one per pass) ───────────────────────────────────────────
 
@@ -1544,6 +1545,9 @@ async function runMultiPassFull(
   if (droppedLocs.length) console.log(`[analyze] Dropped ${droppedLocs.length} ungrounded locations: ${droppedLocs.join(', ')}`);
   const locations = groundedLocs;
 
+  // Remap character sub-locations to extracted canonical locations
+  characters = resolveCharacterLocationsToExtracted(characters, locations);
+
   // Pass 3: Arcs (with full character + location context)
   console.log('[analyze] Pass 3: arcs');
   const arcSystem = config.provider === 'ollama' ? ARCS_SYSTEM_LOCAL : ARCS_SYSTEM;
@@ -1673,6 +1677,9 @@ async function runMultiPassDelta(
   const afterLocs = mergeDelta({ ...afterChars, characters: currentCharacters }, locDelta);
   const currentLocations = afterLocs.locations;
   console.log(`[analyze] Pass 2 done: ${locDelta.updatedLocations?.length ?? 0} location changes`);
+
+  // Remap character sub-locations to extracted canonical locations
+  currentCharacters = resolveCharacterLocationsToExtracted(currentCharacters, currentLocations ?? []);
 
   // Pass 3: Arcs (with full character + location context)
   console.log('[analyze] Pass 3: arcs (delta)');
