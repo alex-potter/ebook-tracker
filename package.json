@@ -19,9 +19,11 @@
     "cross-env": "^7.0.3",
     "jszip": "^3.10.1",
     "next": "^14.2.0",
+    "potrace": "^2.1.8",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
-    "undici": "^7.22.0"
+    "undici": "^7.22.0",
+    "vtracer": "^1.0.8"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.0.0",

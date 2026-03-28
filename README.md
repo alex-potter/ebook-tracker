@@ -1,6 +1,10 @@
-# BookBuddy
+<p align="center">
+  <img src="logo.svg" alt="BookBuddy logo" width="180" />
+</p>
 
-> Track characters as you read — spoiler-free.
+<h1 align="center">BookBuddy</h1>
+
+<p align="center">Track characters as you read — spoiler-free.</p>
 
 [![MIT License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![GitHub Pages](https://img.shields.io/badge/demo-live-blue)](https://alex-potter.github.io/bookbuddy/)

@@ -6,7 +6,13 @@ export const metadata: Metadata = {
   description: 'Track characters as you read your ebook — spoiler-free.',
   manifest: '/manifest.json',
   appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: 'BookBuddy' },
-  icons: { apple: '/icon-192.png' },
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: '48x48' },
+      { url: '/favicon-196.png', sizes: '196x196', type: 'image/png' },
+    ],
+    apple: { url: '/apple-icon-180.png', sizes: '180x180' },
+  },
 };
 
 export const viewport: Viewport = {
@@ -34,7 +40,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){if(!navigator.standalone&&!window.matchMedia('(display-mode: standalone)').matches)return;var c=document.createElement('canvas');var dpr=window.devicePixelRatio||1;c.width=screen.width*dpr;c.height=screen.height*dpr;var ctx=c.getContext('2d');ctx.fillStyle='#09090b';ctx.fillRect(0,0,c.width,c.height);var img=new Image();img.onload=function(){var s=128*dpr;ctx.drawImage(img,(c.width-s)/2,(c.height-s)/2,s,s);var link=document.createElement('link');link.rel='apple-touch-startup-image';link.href=c.toDataURL();document.head.appendChild(link)};img.src='${basePath}/icon-512.png'})()`,
+            __html: `(function(){if(!navigator.standalone&&!window.matchMedia('(display-mode: standalone)').matches)return;var c=document.createElement('canvas');var dpr=window.devicePixelRatio||1;c.width=screen.width*dpr;c.height=screen.height*dpr;var ctx=c.getContext('2d');ctx.fillStyle='#09090b';ctx.fillRect(0,0,c.width,c.height);var img=new Image();img.onload=function(){var s=128*dpr;ctx.drawImage(img,(c.width-s)/2,(c.height-s)/2,s,s);var link=document.createElement('link');link.rel='apple-touch-startup-image';link.href=c.toDataURL();document.head.appendChild(link)};img.src='${basePath}/manifest-icon-512.maskable.png'})()`,
           }}
         />
       </head>
