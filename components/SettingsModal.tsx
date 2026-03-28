@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { loadAiSettings, saveAiSettings, testConnection, diagnoseOllamaConnection, type AiSettings } from '@/lib/ai-client';
 
 interface Props {
@@ -25,6 +25,7 @@ export default function SettingsModal({ onClose }: Props) {
   const [detectedCtx, setDetectedCtx] = useState<number | null>(settings.ollamaDetectedContextLength ?? null);
   const [detectingCtx, setDetectingCtx] = useState(false);
   const [detectError, setDetectError] = useState(false);
+  const detectDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function set<K extends keyof AiSettings>(key: K, value: AiSettings[K]) {
     setSettings((prev) => ({ ...prev, [key]: value }));
@@ -166,8 +167,13 @@ export default function SettingsModal({ onClose }: Props) {
                 type="text"
                 value={settings.model}
                 onChange={(e) => {
-                  set('model', e.target.value);
-                  setSettings((prev) => ({ ...prev, model: e.target.value, ollamaContextLength: undefined }));
+                  const val = e.target.value;
+                  setSettings((prev) => ({ ...prev, model: val, ollamaContextLength: undefined }));
+                  setSaved(false);
+                  setTestState('idle');
+                  setDetectedCtx(null);
+                  if (detectDebounceRef.current) clearTimeout(detectDebounceRef.current);
+                  detectDebounceRef.current = setTimeout(() => detectContextLength(undefined, val), 400);
                 }}
                 placeholder="qwen2.5:14b"
                 className="w-full bg-stone-100 dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-stone-800 dark:text-zinc-200 focus:outline-none focus:border-amber-500/50"
@@ -177,9 +183,10 @@ export default function SettingsModal({ onClose }: Props) {
                   <button
                     key={m}
                     onClick={() => {
-                      set('model', m);
-                      // Reset context override when model changes, then detect new default
                       setSettings((prev) => ({ ...prev, model: m, ollamaContextLength: undefined }));
+                      setSaved(false);
+                      setTestState('idle');
+                      setDetectedCtx(null);
                       detectContextLength(undefined, m);
                     }}
                     className={`px-2 py-0.5 rounded text-[11px] font-mono border transition-colors ${settings.model === m ? 'border-amber-500/50 bg-amber-500/10 text-amber-400' : 'border-stone-300 dark:border-zinc-700 text-stone-400 dark:text-zinc-600 hover:border-stone-400 dark:hover:border-zinc-500 hover:text-stone-600 dark:hover:text-zinc-400'}`}
