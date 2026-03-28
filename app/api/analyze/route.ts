@@ -1737,10 +1737,15 @@ export async function POST(req: NextRequest) {
       _geminiKey?: string;
       _openaiCompatibleUrl?: string;
       _openaiCompatibleKey?: string;
+      _ollamaContextLength?: number;
     };
     const { chaptersRead, newChapters, allChapterTitles, currentChapterTitle, bookTitle, bookAuthor, previousResult } = body;
 
     const config = resolveConfig(body);
+    // Pass user's context length override for Ollama
+    if (body._ollamaContextLength && config.provider === 'ollama') {
+      (config as { contextLengthOverride?: number }).contextLengthOverride = body._ollamaContextLength;
+    }
 
     if (config.provider !== 'ollama' && !config.apiKey) {
       return NextResponse.json(
@@ -1752,8 +1757,8 @@ export async function POST(req: NextRequest) {
     const modelName = config.model;
 
     // Detect context window for this provider/model
-    const contextWindow = await getContextWindow(config);
-    console.log(`[analyze] Context window: ${contextWindow} tokens (${config.provider}/${config.model})`);
+    const { contextWindow, source } = await getContextWindow(config);
+    console.log(`[analyze] Context window: ${contextWindow} tokens (${source}) [${config.provider}/${config.model}]`);
 
     const isDelta = !!(previousResult && newChapters?.length);
     let result: AnalysisResult;

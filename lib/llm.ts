@@ -409,6 +409,7 @@ interface RequestBody {
   _geminiKey?: string;
   _openaiCompatibleUrl?: string;
   _openaiCompatibleKey?: string;
+  _ollamaContextLength?: number;
 }
 
 export function resolveConfig(body: RequestBody, overrides?: ResolveConfigOverrides): Omit<LLMCallConfig, 'system' | 'userPrompt' | 'maxTokens'> {
