@@ -504,7 +504,7 @@ export default function LocationBoard({ characters, locations, snapshots = [], c
                             || (c.aliases ?? []).some((a) => a.toLowerCase().includes(q));
                         })
                       : chars;
-                    if (filtered.length === 0) return [];
+                    if (filtered.length === 0 && !description) return [];
                     return [(
                       <div key={location}>
                         {renderLocationCard(location, filtered, description, 0)}
