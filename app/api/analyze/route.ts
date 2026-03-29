@@ -145,8 +145,8 @@ const CHARACTERS_SYSTEM_LOCAL = `You are a character tracker for a literary read
 RULES:
 1. Base ALL information SOLELY on the text provided. Do NOT use any knowledge of the book.
 2. If you recognize this book, IGNORE that knowledge. Only report facts explicitly stated in the text.
-3. Include every named character who appears by name in the text — protagonists, antagonists, and minor characters.
-4. A character mentioned once by name still gets an entry.
+3. Include all main and secondary characters who play a role in the chapter's events with full detail.
+4. For minor characters (mentioned only in passing, no plot significance), include only their name and importance level — omit description, relationships, and recentEvents.
 5. ONLY include characters whose name literally appears in the provided text. Do NOT invent characters.
 6. A character must appear EXACTLY ONCE. If the same person is called multiple names (e.g. "Matrim Cauthon" and "Mat"), create ONE entry using the fullest name and list shorter forms in "aliases".
 7. Never create separate entries for a full name and its nickname. Titles/epithets go in aliases.
@@ -394,7 +394,7 @@ function buildCharactersFullPrompt(
 TEXT:
 ${text}
 
-Extract a COMPLETE character roster — every named character who appears, from major protagonists to characters who appear in a single scene. Do not skip anyone because they seem minor.
+Extract characters who matter to this chapter's events. Include all main and secondary characters with full detail. Minor characters (mentioned once in passing, no significant action) need only name and importance — keep their entries brief.
 
 Return ONLY a JSON object (no markdown fences, no explanation):
 ${schema}`;
@@ -425,7 +425,7 @@ ${text}
 
 INSTRUCTIONS — RETURN ONLY CHANGES, NOT THE FULL LIST:
 1. For each character who APPEARS in the new chapter: include them in "updatedCharacters" with updated fields (status, currentLocation, recentEvents, lastSeen). Keep description/relationships from existing state unless the chapter changes them.
-2. For any BRAND NEW named character introduced in this chapter: include them in "updatedCharacters" with all fields filled in. NEVER group individuals — each person gets their own entry.
+2. For any BRAND NEW main or secondary character introduced in this chapter: include them in "updatedCharacters" with all fields filled in. For new minor characters (mentioned only in passing), include only name, importance, and status. NEVER group individuals — each person gets their own entry.
 3. Do NOT include characters from the existing list who do not appear in the new chapter.
 4. Do NOT use any knowledge of this book beyond what is listed above and the new chapter text.
 5. When returning an existing character in "updatedCharacters", you MUST use their EXACT NAME from the existing list above. Do NOT use a shortened form, nickname, or alternate spelling — copy the name exactly as written.
