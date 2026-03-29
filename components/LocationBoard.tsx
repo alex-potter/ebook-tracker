@@ -281,7 +281,7 @@ export default function LocationBoard({ characters, locations, snapshots = [], c
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium text-stone-700 dark:text-zinc-300 truncate">{c.name}</p>
                               <p className="text-xs text-stone-400 dark:text-zinc-500 line-clamp-2 leading-relaxed">
-                                {c.recentEvents || c.description.split('.')[0]}
+                                {c.recentEvents || c.description?.split('.')[0] || ''}
                               </p>
                             </div>
                             <span className={`flex-shrink-0 mt-1 w-2 h-2 rounded-full ${STATUS_DOT[c.status]}`} title={c.status} />
