@@ -80,7 +80,7 @@ const CHARACTER_SCHEMA = `{
       "importance": "main" | "secondary" | "minor",
       "status": "alive" | "dead" | "unknown" | "uncertain",
       "lastSeen": "Chapter title where they last appeared",
-      "currentLocation": "A named place only — city, castle, planet, region, ship name. Use ONLY a place that matches one of the extracted locations — never a generic sub-location like 'castle', 'palace', 'battlefield', 'feast hall'. NEVER a status or activity (not 'Dead', 'Returning Home', 'Travelling', 'En Route', 'In Battle', 'Unknown Location'). If the character has no confirmed place, use exactly 'Unknown'.",
+      "currentLocation": "A named place only — city, castle, planet, region, ship name. NEVER a status or activity (not 'Dead', 'Returning Home', 'Travelling', 'En Route', 'In Battle', 'Unknown Location'). If the character has no confirmed place, use exactly 'Unknown'.",
       "description": "1–2 sentence description of who they are, their role, and appearance/personality as established so far",
       "relationships": [
         { "character": "Other character's name", "relationship": "How they relate" }
@@ -98,7 +98,7 @@ const CHARACTER_DELTA_SCHEMA = `{
       "importance": "main" | "secondary" | "minor",
       "status": "alive" | "dead" | "unknown" | "uncertain",
       "lastSeen": "Chapter title where they last appeared",
-      "currentLocation": "A named place only — city, castle, planet, region, ship name. Use ONLY a place that matches one of the extracted locations — never a generic sub-location like 'castle', 'palace', 'battlefield', 'feast hall'. NEVER a status or activity (not 'Dead', 'Returning Home', 'Travelling', 'En Route', 'In Battle', 'Unknown Location'). If the character has no confirmed place, use exactly 'Unknown'.",
+      "currentLocation": "A named place only — city, castle, planet, region, ship name. NEVER a status or activity (not 'Dead', 'Returning Home', 'Travelling', 'En Route', 'In Battle', 'Unknown Location'). If the character has no confirmed place, use exactly 'Unknown'.",
       "description": "1–2 sentence description (carry forward from existing state if unchanged)",
       "relationships": [
         { "character": "Other character's name", "relationship": "How they relate" }

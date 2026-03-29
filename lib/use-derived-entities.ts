@@ -67,6 +67,13 @@ export function useDerivedEntities(
       const description = locationDescMap.get(loc.toLowerCase());
       locationGroups.push({ location: loc, characters: chars, description });
     }
+    // Include extracted locations that have no characters assigned
+    for (const loc of currentResult.locations ?? []) {
+      const key = resolveLoc(loc.name) || loc.name;
+      if (!seen.has(key)) {
+        locationGroups.push({ location: loc.name, characters: [], description: loc.description });
+      }
+    }
     locationGroups.sort((a, b) => {
       if (a.location === 'Unknown') return 1;
       if (b.location === 'Unknown') return -1;
