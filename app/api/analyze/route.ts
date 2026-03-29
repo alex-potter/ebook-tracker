@@ -156,9 +156,10 @@ const LOCATIONS_SYSTEM_LOCAL = `You are a location tracker for a literary readin
 
 RULES:
 1. Base ALL information SOLELY on the text provided. Do NOT use any knowledge of the book.
-2. Extract significant named locations — cities, castles, regions, planets, ships.
+2. Extract at most 15 significant named locations — cities, castles, regions, planets, ships. Focus on places central to the narrative action.
 3. Prefer broad canonical place names over sub-locations (rooms, corridors, hallways).
 4. If a place is inside another listed location, use the containing location instead.
+5. Skip passing references, historical asides, and geographic descriptions not part of the current narrative.
 5. Include aliases — common shorter names for the same place.
 6. Include a 2–3 sentence story summary of where the narrative stands.`;
 
@@ -466,12 +467,13 @@ ${charactersSummary(characters)}
 TEXT:
 ${text}
 
-Extract all significant named locations from this text. Also write a story summary.
+Extract the most significant named locations from this text (at most 15). Focus on places central to the narrative action — where major events happen or characters spend time. Also write a story summary.
 
 LOCATION RULES:
 - Prefer broad canonical place names (city, castle, planet, ship) over sub-locations (rooms, corridors, hallways).
 - If a place is inside or part of another location already listed, use the containing location's name instead.
 - Include aliases — common shorter names readers might use for the same place.
+- Do NOT list every mentioned place — only those important to the story. Skip passing references, historical asides, and geographic descriptions that are not part of the current narrative.
 
 Return ONLY a JSON object (no markdown fences, no explanation):
 ${schema}`;
@@ -1563,17 +1565,25 @@ async function runMultiPassFull(
   arcs = deduplicateArcs(arcs) ?? [];
   console.log(`[analyze] Pass 3 done: ${arcs.length} arcs`);
 
+  // Early dedup before reconciliation (catches exact duplicates like "Buckland" x21)
+  const dedupedLocations = deduplicateLocations(locations) ?? [];
+  if (dedupedLocations.length < locations.length) {
+    console.log(`[analyze] Early dedup: ${locations.length} → ${dedupedLocations.length} locations`);
+  }
+
   // Post-process: assign arc labels to locations, then infer hierarchy from relationships
-  const labeledLocations = assignArcsToLocations(locations, arcs, characters) ?? [];
+  const labeledLocations = assignArcsToLocations(dedupedLocations, arcs, characters) ?? [];
   const hierarchicalLocations = inferParentLocations(labeledLocations);
 
   // Reconciliation pass
   const assembled: AnalysisResult = { characters, locations: hierarchicalLocations.length > 0 ? hierarchicalLocations : undefined, arcs: arcs.length > 0 ? arcs : undefined, summary };
 
-  // Auto-reconciliation: skip for local models when no name overlaps detected
+  // Auto-reconciliation: skip for local models when no name overlaps detected or too many entities
   const charOverlaps = computeNameOverlaps(assembled.characters);
   const locOverlaps = computeNameOverlaps(assembled.locations ?? []);
-  const skipReconcile = config.provider === 'ollama' && charOverlaps.length === 0 && locOverlaps.length === 0;
+  const tooManyEntities = config.provider === 'ollama' && ((assembled.locations?.length ?? 0) > 30 || assembled.characters.length > 50);
+  if (tooManyEntities) console.log(`[analyze] Skipping reconciliation: too many entities for local model (${assembled.characters.length} chars, ${assembled.locations?.length ?? 0} locs)`);
+  const skipReconcile = (config.provider === 'ollama' && charOverlaps.length === 0 && locOverlaps.length === 0) || tooManyEntities;
 
   let reconciled: AnalysisResult;
   if (skipReconcile) {
