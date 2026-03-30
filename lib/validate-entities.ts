@@ -22,7 +22,9 @@ export function validateCharactersAgainstText(
   const dropped: string[] = [];
 
   for (const char of chars) {
-    const allNames = [char.name, ...(char.aliases ?? [])];
+    const allNames = [char.name, ...(char.aliases ?? [])].filter(Boolean);
+
+    if (allNames.length === 0) { dropped.push('(unnamed)'); continue; }
 
     let isGrounded = allNames.some((name) => {
       const nameLower = name.toLowerCase().trim();
@@ -72,7 +74,9 @@ export function validateLocationsAgainstText(
   const dropped: string[] = [];
 
   for (const loc of locs) {
-    const allNames = [loc.name, ...(loc.aliases ?? [])];
+    const allNames = [loc.name, ...(loc.aliases ?? [])].filter(Boolean);
+
+    if (allNames.length === 0) { dropped.push('(unnamed)'); continue; }
 
     let isGrounded = allNames.some((name) => {
       const nameLower = name.toLowerCase().trim();
