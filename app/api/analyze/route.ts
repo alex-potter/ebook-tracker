@@ -514,7 +514,7 @@ ${schema}`;
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function normLoc(name: string): string {
-  return name.toLowerCase()
+  return (name ?? '').toLowerCase()
     .replace(/^(the|a|an)\s+/, '')
     .split(',')[0].trim()
     .split(/\s+/).sort().join(' ');
@@ -555,7 +555,7 @@ function deduplicateLocations(locs: AnalysisResult['locations']): AnalysisResult
     for (const a of aliases) aliasLookup.set(normLoc(a), groupKey);
   }
 
-  for (const loc of locs) {
+  for (const loc of locs.filter((l) => l.name)) {
     const locAliases = loc.aliases ?? [];
     const existingKey = findGroupKey(loc.name, locAliases);
     if (existingKey) {
@@ -754,12 +754,12 @@ function sanitizeCharacterAliases(chars: AnalysisResult['characters']): Analysis
 function deduplicateCharacters(
   chars: AnalysisResult['characters'],
 ): { characters: AnalysisResult['characters']; nameMap: Map<string, string> } {
-  const norm = (s: string) => s.toLowerCase().trim();
+  const norm = (s: string) => (s ?? '').toLowerCase().trim();
 
   type CharEntry = AnalysisResult['characters'][0];
 
-  // Clone so we can mutate
-  let entries: CharEntry[] = chars.map((c) => ({ ...c }));
+  // Clone so we can mutate; drop entries with no name (malformed LLM output)
+  let entries: CharEntry[] = chars.filter((c) => c.name).map((c) => ({ ...c }));
   const nameMap = new Map<string, string>();
 
   function mergeTwo(keep: CharEntry, drop: CharEntry): CharEntry {
