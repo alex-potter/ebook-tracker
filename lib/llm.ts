@@ -116,9 +116,15 @@ async function callAnthropicProvider(config: LLMCallConfig): Promise<DispatchRes
   return { text: fullText, truncated };
 }
 
+/** Strip qwen3 thinking tags from response content */
+function stripThinkTags(text: string): string {
+  return text.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
+}
+
 async function callOllamaProvider(config: LLMCallConfig): Promise<DispatchResult> {
   const baseUrl = (config.baseUrl ?? 'http://localhost:11434/v1').replace(/\/$/, '');
   const model = config.model || 'qwen2.5:14b';
+  const isQwen3 = model.startsWith('qwen3');
   let fullText = '';
   let truncated = false;
 
@@ -138,7 +144,8 @@ async function callOllamaProvider(config: LLMCallConfig): Promise<DispatchResult
       messages.push({ role: 'user', content });
     } else {
       if (config.system) messages.push({ role: 'system', content: config.system });
-      messages.push({ role: 'user', content: config.userPrompt });
+      const userContent = isQwen3 ? config.userPrompt + ' /no_think' : config.userPrompt;
+      messages.push({ role: 'user', content: userContent });
     }
 
     if (fullText) {
@@ -166,7 +173,8 @@ async function callOllamaProvider(config: LLMCallConfig): Promise<DispatchResult
     }
 
     const data = await res.json() as { choices?: { message?: { content?: string }; finish_reason?: string }[] };
-    const text = data.choices?.[0]?.message?.content;
+    let text = data.choices?.[0]?.message?.content;
+    if (isQwen3 && text) text = stripThinkTags(text);
     if (!text) throw new Error('No content in Ollama response.');
     fullText += text;
 
