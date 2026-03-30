@@ -688,7 +688,7 @@ function inferParentLocations(locs: NonNullable<AnalysisResult['locations']>): N
   const inferred = new Map<string, string>();
 
   for (const loc of locs) {
-    for (const rel of loc.relationships ?? []) {
+    for (const rel of (loc.relationships ?? []).filter((r) => r.relationship && r.location)) {
       const relType = rel.relationship.toLowerCase().trim();
       const targetCanonical = nameToCanonical.get(rel.location.toLowerCase().trim());
       if (!targetCanonical) continue;
@@ -712,6 +712,40 @@ function inferParentLocations(locs: NonNullable<AnalysisResult['locations']>): N
  * Strip junk aliases: too-short, cross-contaminated with other characters'
  * primary names, duplicates of own name, and generic titles shared by 3+ chars.
  */
+/**
+ * Strip malformed entries from LLM output: drop entities missing required name
+ * fields and filter out relationship entries with missing character/location keys.
+ * This prevents downstream crashes from smaller models returning incomplete JSON.
+ */
+function sanitizeLLMCharacters(chars: AnalysisResult['characters']): AnalysisResult['characters'] {
+  return chars
+    .filter((c) => c.name)
+    .map((c) => ({
+      ...c,
+      aliases: (c.aliases ?? []).filter(Boolean),
+      relationships: (c.relationships ?? []).filter((r) => r.character && r.relationship),
+    }));
+}
+
+function sanitizeLLMLocations(locs: NonNullable<AnalysisResult['locations']>): NonNullable<AnalysisResult['locations']> {
+  return locs
+    .filter((l) => l.name)
+    .map((l) => ({
+      ...l,
+      aliases: (l.aliases ?? []).filter(Boolean),
+      relationships: (l.relationships ?? []).filter((r) => r.location && r.relationship),
+    }));
+}
+
+function sanitizeLLMArcs(arcs: NonNullable<AnalysisResult['arcs']>): NonNullable<AnalysisResult['arcs']> {
+  return arcs
+    .filter((a) => a.name)
+    .map((a) => ({
+      ...a,
+      characters: (a.characters ?? []).filter(Boolean),
+    }));
+}
+
 function sanitizeCharacterAliases(chars: AnalysisResult['characters']): AnalysisResult['characters'] {
   const norm = (s: string) => s.toLowerCase().trim();
   const primaryNames = new Set(chars.map((c) => norm(c.name)));
@@ -1495,7 +1529,7 @@ async function runMultiPassFull(
     config, 'characters-full', text, contextWindow, config.provider === 'ollama' ? 4096 : undefined,
   );
   totalRateLimitMs += rlChars;
-  let characters = charsResult?.characters ?? [];
+  let characters = sanitizeLLMCharacters(charsResult?.characters ?? []);
   characters = sanitizeCharacterAliases(characters);
   const charDedup = deduplicateCharacters(characters);
   characters = charDedup.characters;
@@ -1538,7 +1572,7 @@ async function runMultiPassFull(
     config, 'locations-full', text, contextWindow, config.provider === 'ollama' ? 2048 : undefined,
   );
   totalRateLimitMs += rlLocs;
-  const rawLocations = locsResult?.locations ?? [];
+  const rawLocations = sanitizeLLMLocations(locsResult?.locations ?? []);
   const summary = locsResult?.summary ?? '';
   console.log(`[analyze] Pass 2 done: ${rawLocations.length} locations`);
 
@@ -1559,7 +1593,7 @@ async function runMultiPassFull(
     config, 'arcs-full', text, contextWindow, config.provider === 'ollama' ? 2048 : undefined,
   );
   totalRateLimitMs += rlArcs;
-  let arcs = arcsResult?.arcs ?? [];
+  let arcs = sanitizeLLMArcs(arcsResult?.arcs ?? []);
   // Apply character nameMap to arc character lists, then dedup arcs
   if (charNameMap.size > 0) arcs = updateArcReferences(arcs, charNameMap) ?? arcs;
   arcs = deduplicateArcs(arcs) ?? [];
@@ -1632,7 +1666,7 @@ async function runMultiPassDelta(
   );
   totalRateLimitMs += rlChars;
   // Text grounding: drop delta characters whose names don't appear in the new chapter text
-  let deltaChars = charsResult?.updatedCharacters ?? [];
+  let deltaChars = sanitizeLLMCharacters(charsResult?.updatedCharacters ?? []);
   deltaChars = sanitizeCharacterAliases(deltaChars);
   const deltaDedup = deduplicateCharacters(deltaChars);
   deltaChars = deltaDedup.characters;
@@ -1680,7 +1714,7 @@ async function runMultiPassDelta(
     config, 'locations-delta', text, contextWindow, config.provider === 'ollama' ? 2048 : undefined,
   );
   totalRateLimitMs += rlLocs;
-  const deltaLocs = locsResult?.updatedLocations ?? [];
+  const deltaLocs = sanitizeLLMLocations(locsResult?.updatedLocations ?? []);
   const { validated: groundedDeltaLocs, dropped: droppedDeltaLocs } = validateLocationsAgainstText(deltaLocs, text);
   if (droppedDeltaLocs.length) console.log(`[analyze] Dropped ${droppedDeltaLocs.length} ungrounded delta locations: ${droppedDeltaLocs.join(', ')}`);
   const locDelta = { updatedLocations: groundedDeltaLocs, summary: locsResult?.summary };
@@ -1701,9 +1735,9 @@ async function runMultiPassDelta(
   );
   totalRateLimitMs += rlArcs;
   const arcDelta = {
-    updatedArcs: arcsResult?.updatedArcs,
-    renamedArcs: arcsResult?.renamedArcs,
-    retiredArcs: arcsResult?.retiredArcs,
+    updatedArcs: arcsResult?.updatedArcs ? sanitizeLLMArcs(arcsResult.updatedArcs) : undefined,
+    renamedArcs: arcsResult?.renamedArcs?.filter((r) => r.from && r.to),
+    retiredArcs: arcsResult?.retiredArcs?.filter(Boolean),
   };
   console.log(`[analyze] Pass 3 done: ${arcDelta.updatedArcs?.length ?? 0} arc changes`);
 

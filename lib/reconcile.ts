@@ -576,8 +576,8 @@ export function applyCharacterReconciliation(
       if ((importanceOrder[absorbed.importance] ?? 0) > (importanceOrder[primary.importance] ?? 0)) {
         primary.importance = absorbed.importance;
       }
-      const existingRels = new Set(primary.relationships?.map((r) => r.character.toLowerCase()) ?? []);
-      for (const rel of absorbed.relationships ?? []) {
+      const existingRels = new Set(primary.relationships?.filter((r) => r.character).map((r) => r.character.toLowerCase()) ?? []);
+      for (const rel of (absorbed.relationships ?? []).filter((r) => r.character)) {
         if (!existingRels.has(rel.character.toLowerCase())) {
           primary.relationships = [...(primary.relationships ?? []), rel];
           existingRels.add(rel.character.toLowerCase());
@@ -598,7 +598,7 @@ export function applyCharacterReconciliation(
 
   for (const char of result) {
     if (char.relationships) {
-      char.relationships = char.relationships.map((r) => ({
+      char.relationships = char.relationships.filter((r) => r.character).map((r) => ({
         ...r,
         character: nameMap.get(r.character.toLowerCase()) ?? r.character,
       }));
@@ -649,8 +649,8 @@ export function applyLocationReconciliation(
       if (absorbed.description && absorbed.description.length > (primary.description?.length ?? 0)) {
         primary.description = absorbed.description;
       }
-      const existingRels = new Set(primary.relationships?.map((r) => r.location.toLowerCase()) ?? []);
-      for (const rel of absorbed.relationships ?? []) {
+      const existingRels = new Set(primary.relationships?.filter((r) => r.location).map((r) => r.location.toLowerCase()) ?? []);
+      for (const rel of (absorbed.relationships ?? []).filter((r) => r.location)) {
         if (!existingRels.has(rel.location.toLowerCase())) {
           primary.relationships = [...(primary.relationships ?? []), rel];
           existingRels.add(rel.location.toLowerCase());
@@ -673,7 +673,7 @@ export function applyLocationReconciliation(
 
   for (const loc of result) {
     if (loc.relationships) {
-      loc.relationships = loc.relationships.map((r) => ({
+      loc.relationships = loc.relationships.filter((r) => r.location).map((r) => ({
         ...r,
         location: locNameMap.get(r.location.toLowerCase()) ?? r.location,
       }));
@@ -695,7 +695,7 @@ export function updateArcReferences(
   if (!arcs?.length || nameMap.size === 0) return arcs;
   return arcs.map((arc) => ({
     ...arc,
-    characters: [...new Set(arc.characters.map((c) => nameMap.get(c.toLowerCase()) ?? c))],
+    characters: [...new Set(arc.characters.filter(Boolean).map((c) => nameMap.get(c.toLowerCase()) ?? c))],
   }));
 }
 

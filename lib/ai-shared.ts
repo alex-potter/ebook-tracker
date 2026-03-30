@@ -277,8 +277,9 @@ export function mergeDelta(
         existing.name !== canonicalName ? existing.name : '',
       ].map((s) => s.trim()).filter((s) => s && s.toLowerCase() !== canonicalName.toLowerCase()))];
       // Intelligent field merging
-      const relsSeen = new Map((existing.relationships ?? []).map((r) => [r.character.toLowerCase(), r]));
-      for (const r of updated.relationships ?? []) {
+      const validExistingRels = (existing.relationships ?? []).filter((r) => r.character && r.relationship);
+      const relsSeen = new Map(validExistingRels.map((r) => [r.character.toLowerCase(), r]));
+      for (const r of (updated.relationships ?? []).filter((r) => r.character && r.relationship)) {
         const key = r.character.toLowerCase();
         if (!relsSeen.has(key) || r.relationship.length > (relsSeen.get(key)!.relationship.length)) {
           relsSeen.set(key, r);
@@ -316,8 +317,9 @@ export function mergeDelta(
         updated.name !== canonicalName ? updated.name : '',
         existing.name !== canonicalName ? existing.name : '',
       ].map((s) => s.trim()).filter((s) => s && s.toLowerCase() !== canonicalName.toLowerCase()))];
-      const locRelsSeen = new Map((existing.relationships ?? []).map((r) => [r.location.toLowerCase(), r]));
-      for (const r of updated.relationships ?? []) {
+      const validExistingLocRels = (existing.relationships ?? []).filter((r) => r.location && r.relationship);
+      const locRelsSeen = new Map(validExistingLocRels.map((r) => [r.location.toLowerCase(), r]));
+      for (const r of (updated.relationships ?? []).filter((r) => r.location && r.relationship)) {
         const key = r.location.toLowerCase();
         if (!locRelsSeen.has(key) || r.relationship.length > (locRelsSeen.get(key)!.relationship.length)) {
           locRelsSeen.set(key, r);
@@ -338,7 +340,8 @@ export function mergeDelta(
   const prevArcs = previous.arcs ?? [];
   const mergedArcs = [...prevArcs];
   for (const updated of delta.updatedArcs ?? []) {
-    const idx = mergedArcs.findIndex((a) => a.name.toLowerCase() === updated.name.toLowerCase());
+    if (!updated.name) continue;
+    const idx = mergedArcs.findIndex((a) => a.name?.toLowerCase() === updated.name.toLowerCase());
     if (idx >= 0) mergedArcs[idx] = { ...mergedArcs[idx], ...updated };
     else mergedArcs.push(updated);
   }
