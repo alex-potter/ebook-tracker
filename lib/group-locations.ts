@@ -105,19 +105,21 @@ export function applyLocationGroups(
 
   for (const group of groups) {
     // Validate parentIndex
-    if (group.parentIndex < 0 || group.parentIndex >= updatedLocations.length) continue;
+    if (typeof group.parentIndex !== 'number' || group.parentIndex < 0 || group.parentIndex >= updatedLocations.length) continue;
     if (claimed.has(group.parentIndex)) continue;
     claimed.add(group.parentIndex);
 
     const parent = updatedLocations[group.parentIndex];
+    if (!parent?.name) continue;
 
     // Process absorptions
     for (const idx of (group.absorb ?? [])) {
-      if (idx < 0 || idx >= updatedLocations.length) continue;
+      if (typeof idx !== 'number' || idx < 0 || idx >= updatedLocations.length) continue;
       if (claimed.has(idx)) continue;
       claimed.add(idx);
 
       const sub = updatedLocations[idx];
+      if (!sub?.name) continue;
 
       // Append recentEvents
       if (sub.recentEvents) {
@@ -132,12 +134,13 @@ export function applyLocationGroups(
       }
 
       // Add sub-location name + aliases to parent aliases
-      const parentAliases = new Set((parent.aliases ?? []).map((a) => a.toLowerCase()));
+      const parentAliases = new Set((parent.aliases ?? []).filter(Boolean).map((a) => a.toLowerCase()));
       if (!parentAliases.has(sub.name.toLowerCase()) && sub.name.toLowerCase() !== parent.name.toLowerCase()) {
         parent.aliases = [...(parent.aliases ?? []), sub.name];
         parentAliases.add(sub.name.toLowerCase());
       }
-      for (const alias of (sub.aliases ?? [])) {
+      for (const alias of (sub.aliases ?? []).filter(Boolean)) {
+        if (typeof alias !== 'string') continue;
         if (!parentAliases.has(alias.toLowerCase()) && alias.toLowerCase() !== parent.name.toLowerCase()) {
           parent.aliases = [...(parent.aliases ?? []), alias];
           parentAliases.add(alias.toLowerCase());
@@ -164,7 +167,7 @@ export function applyLocationGroups(
 
     // Process children
     for (const idx of (group.children ?? [])) {
-      if (idx < 0 || idx >= updatedLocations.length) continue;
+      if (typeof idx !== 'number' || idx < 0 || idx >= updatedLocations.length) continue;
       if (claimed.has(idx)) continue;
       claimed.add(idx);
 
