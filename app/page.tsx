@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { parseEpub } from '@/lib/epub-parser';
-import type { AnalysisResult, BookBuddyExport, BookMeta, Character, MapState, NarrativeArc, ParentArc, ParsedEbook, PinUpdates, QueueJob, SavedBookEntry, Snapshot, StoredBookState } from '@/types';
+import type { AnalysisResult, BookBuddyExport, BookMeta, Character, MapState, NarrativeArc, ParentArc, ParsedEbook, PinUpdates, QueueJob, SavedBookEntry, SeriesDefinition, Snapshot, StoredBookState } from '@/types';
 import CalibreLibrary from '@/components/CalibreLibrary';
 import CharacterCard from '@/components/CharacterCard';
 import ChapterSelector from '@/components/ChapterSelector';
@@ -25,6 +25,7 @@ import StoryTimeline from '@/components/StoryTimeline';
 import WelcomeBanner from '@/components/WelcomeBanner';
 import LibrarySubmitModal from '@/components/LibrarySubmitModal';
 import BookmarkModal from '@/components/BookmarkModal';
+import BookStructureEditor from '@/components/BookStructureEditor';
 import { useDerivedEntities } from '@/lib/use-derived-entities';
 import { buildInitialSeriesDefinition, migrateToSeriesDefinition } from '@/lib/series';
 
@@ -505,6 +506,14 @@ export default function Home() {
     setParentArcsRev((r) => r + 1);
   }
 
+  function handleSaveSeries(updatedSeries: SeriesDefinition) {
+    if (!book || !storedRef.current) return;
+    const updated = { ...storedRef.current, series: updatedSeries };
+    storedRef.current = updated;
+    persistState(book.title, book.author, updated);
+    setShowBookStructureEditor(false);
+  }
+
   function completeSetup(range: { start: number; end: number }) {
     setChapterRange(range);
     setNeedsSetup(false);
@@ -520,6 +529,8 @@ export default function Home() {
   const [playSpeed, setPlaySpeed] = useState(2000); // ms per step
   const [showBookmarkModal, setShowBookmarkModal] = useState(false);
   const [bookmarkModalMode, setBookmarkModalMode] = useState<'import' | 'update'>('update');
+  const [showBookStructureEditor, setShowBookStructureEditor] = useState(false);
+  const [bookStructureMode, setBookStructureMode] = useState<'setup' | 'manage'>('setup');
   const playIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Drive playback: advance one snapshot per interval tick
@@ -872,6 +883,12 @@ export default function Home() {
       setNeedsSetup(true);
     } else {
       setNeedsSetup(false);
+    }
+
+    // Show book structure editor for multi-book EPUBs with unconfirmed structure
+    if (stateToSave.series && stateToSave.series.books.some((b) => !b.confirmed)) {
+      setBookStructureMode('setup');
+      setShowBookStructureEditor(true);
     }
   }
 
@@ -1484,6 +1501,15 @@ export default function Home() {
   return (
     <main className="h-screen flex flex-col overflow-hidden">
       {showSettings && <SettingsModal onClose={() => { setShowSettings(false); setShowSetupPrompt(false); }} />}
+      {showBookStructureEditor && book && storedRef.current?.series && (
+        <BookStructureEditor
+          series={storedRef.current.series}
+          chapters={book.chapters.map(({ order, title, bookIndex }) => ({ order, title, bookIndex }))}
+          onSave={handleSaveSeries}
+          onClose={() => setShowBookStructureEditor(false)}
+          mode={bookStructureMode}
+        />
+      )}
       {showBookmarkModal && book && (
         <BookmarkModal
           chapters={book.chapters}
@@ -2002,6 +2028,18 @@ export default function Home() {
                       parentArcs={stored?.parentArcs}
                       onUpdateParentArcs={handleUpdateParentArcs}
                     />
+                  )}
+
+                  {tab === 'manage' && storedRef.current?.series && storedRef.current.series.books.length > 1 && (
+                    <button
+                      onClick={() => { setBookStructureMode('manage'); setShowBookStructureEditor(true); }}
+                      className="mb-4 px-4 py-2 rounded-xl border border-stone-200 dark:border-zinc-700 text-sm text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-200 hover:border-stone-400 dark:hover:border-zinc-500 transition-colors w-full text-left"
+                    >
+                      Edit Book Structure
+                      <span className="text-xs text-stone-400 dark:text-zinc-500 ml-2">
+                        {storedRef.current.series.books.length} books
+                      </span>
+                    </button>
                   )}
 
                   {tab === 'manage' && stored && result && (
