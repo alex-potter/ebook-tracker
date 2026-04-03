@@ -28,7 +28,8 @@ import BookmarkModal from '@/components/BookmarkModal';
 import BookStructureEditor from '@/components/BookStructureEditor';
 import BookFilterSelector from '@/components/BookFilterSelector';
 import { useDerivedEntities } from '@/lib/use-derived-entities';
-import { buildInitialSeriesDefinition, migrateToSeriesDefinition, getFilteredChapterOrders, getActiveParentArcs } from '@/lib/series';
+import { buildInitialSeriesDefinition, migrateToSeriesDefinition, getFilteredChapterOrders, getActiveParentArcs, getStaleBooks, computeArcGroupingHash } from '@/lib/series';
+import { generateParentArcs, generateSeriesArcs } from '@/lib/generate-arcs';
 
 type SortKey = 'importance' | 'name' | 'status';
 type MainTab = 'characters' | 'locations' | 'map' | 'arcs' | 'manage';
@@ -174,37 +175,7 @@ async function reconcileResult(
   return data as AnalysisResult;
 }
 
-async function generateParentArcs(
-  bookTitle: string,
-  bookAuthor: string,
-  arcs: NarrativeArc[],
-): Promise<ParentArc[]> {
-  if (!arcs?.length) return [];
-
-  let aiSettings: Record<string, string> = {};
-  try {
-    const { loadAiSettings } = await import('@/lib/ai-client');
-    const s = loadAiSettings();
-    if (s.provider) aiSettings._provider = s.provider;
-    if (s.anthropicKey) aiSettings._apiKey = s.anthropicKey;
-    if (s.ollamaUrl) aiSettings._ollamaUrl = s.ollamaUrl;
-    if (s.model) aiSettings._model = s.model;
-    if (s.geminiKey) aiSettings._geminiKey = s.geminiKey;
-    if (s.openaiCompatibleUrl) aiSettings._openaiCompatibleUrl = s.openaiCompatibleUrl;
-    if (s.openaiCompatibleKey) aiSettings._openaiCompatibleKey = s.openaiCompatibleKey;
-  } catch { /* ignore */ }
-
-  const res = await fetch('/api/group-arcs', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ bookTitle, bookAuthor, arcs, ...aiSettings }),
-  });
-  if (!res.ok) throw new Error('Failed to group arcs');
-  const data = await res.json() as { parentArcs: ParentArc[] };
-  return data.parentArcs;
-}
-
-/** Fire parent arc grouping if the book is fully analyzed. Returns the (possibly updated) stored state. */
+/** Fire parent arc grouping if the book (or a specific book within a series) is fully analyzed. */
 async function maybeGenerateParentArcs(
   stored: StoredBookState,
   bookTitle: string,
@@ -215,6 +186,64 @@ async function maybeGenerateParentArcs(
   if (cancelled) return stored;
   if (stored.lastAnalyzedIndex < rangeEnd) return stored;
   if (!stored.result.arcs?.length) return stored;
+
+  // If we have a series, do per-book grouping
+  if (stored.series && stored.series.books.length > 1) {
+    let series = { ...stored.series, books: [...stored.series.books] };
+    let anyBookGrouped = false;
+
+    for (let bi = 0; bi < series.books.length; bi++) {
+      const bookDef = series.books[bi];
+      // Check if all chapters in this book are analyzed
+      const bookEnd = bookDef.chapterEnd;
+      if (stored.lastAnalyzedIndex < bookEnd) continue;
+      // Skip if already grouped and not stale
+      const currentHash = computeArcGroupingHash(bookDef);
+      if (bookDef.arcGroupingHash === currentHash && bookDef.parentArcs?.length) continue;
+
+      // Gather arcs from snapshots within this book's range
+      const bookSnapshots = stored.snapshots.filter(
+        (s) => s.index >= bookDef.chapterStart && s.index <= bookDef.chapterEnd
+          && !bookDef.excludedChapters.includes(s.index),
+      );
+      const lastSnap = bookSnapshots.sort((a, b) => b.index - a.index)[0];
+      const bookArcs = lastSnap?.result.arcs ?? [];
+      if (!bookArcs.length) continue;
+
+      try {
+        const parentArcs = await generateParentArcs(bookTitle, bookAuthor, bookArcs);
+        series.books[bi] = {
+          ...bookDef,
+          parentArcs,
+          arcGroupingHash: currentHash,
+        };
+        anyBookGrouped = true;
+      } catch (e) {
+        console.warn(`[parent-arcs] Per-book generation failed for "${bookDef.title}":`, e);
+      }
+    }
+
+    let result = { ...stored, series };
+
+    // If all books have per-book arcs, generate series-level arcs
+    if (anyBookGrouped) {
+      const booksWithArcs = series.books
+        .filter((b) => b.parentArcs?.length)
+        .map((b) => ({ bookTitle: b.title, parentArcs: b.parentArcs! }));
+      if (booksWithArcs.length >= 2) {
+        try {
+          const seriesArcs = await generateSeriesArcs(bookTitle, bookAuthor, booksWithArcs);
+          result = { ...result, series: { ...result.series!, seriesArcs } };
+        } catch (e) {
+          console.warn('[parent-arcs] Series-level generation failed:', e);
+        }
+      }
+    }
+
+    return result;
+  }
+
+  // Non-series fallback: original behavior
   try {
     const parentArcs = await generateParentArcs(bookTitle, bookAuthor, stored.result.arcs);
     return { ...stored, parentArcs };
