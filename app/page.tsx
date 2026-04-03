@@ -26,6 +26,7 @@ import WelcomeBanner from '@/components/WelcomeBanner';
 import LibrarySubmitModal from '@/components/LibrarySubmitModal';
 import BookmarkModal from '@/components/BookmarkModal';
 import { useDerivedEntities } from '@/lib/use-derived-entities';
+import { buildInitialSeriesDefinition, migrateToSeriesDefinition } from '@/lib/series';
 
 type SortKey = 'importance' | 'name' | 'status';
 type MainTab = 'characters' | 'locations' | 'map' | 'arcs' | 'manage';
@@ -480,8 +481,9 @@ export default function Home() {
     storedRef.current = updated;
     persistState(book.title, book.author, updated);
 
-    // Load the appropriate snapshot for the new bookmark position
+    // Navigate to the bookmarked chapter
     const bookmark = index ?? stored.lastAnalyzedIndex;
+    setCurrentIndex(bookmark);
     setSpoilerDismissedIndex(null);
     if (bookmark >= stored.lastAnalyzedIndex) {
       setResult(stored.result);
@@ -804,9 +806,27 @@ export default function Home() {
       chapters: parsed.chapters.map(({ id, title, order, bookIndex, bookTitle }) => ({ id, title, order, bookIndex, bookTitle })),
       books: parsed.books,
     };
-    const stateToSave: StoredBookState = initialStored
+    let stateToSave: StoredBookState = initialStored
       ? { ...initialStored, bookMeta }
       : { lastAnalyzedIndex: -2, result: { characters: [], summary: '' }, snapshots: [], bookMeta };
+
+    // Build or migrate series definition
+    if (!stateToSave.series && bookMeta.books && bookMeta.books.length >= 2) {
+      if (initialStored?.excludedBooks || initialStored?.bookMeta) {
+        // Migrate from legacy fields
+        const series = migrateToSeriesDefinition(bookMeta, initialStored?.excludedBooks);
+        if (series) stateToSave = { ...stateToSave, series };
+      } else {
+        // Fresh book — build from parser output
+        const chapterTexts = new Map<number, { title: string; text: string }>();
+        for (const ch of parsed.chapters) {
+          chapterTexts.set(ch.order, { title: ch.title, text: ch.text });
+        }
+        const series = buildInitialSeriesDefinition(bookMeta, detectChapterRange, chapterTexts);
+        if (series) stateToSave = { ...stateToSave, series };
+      }
+    }
+
     storedRef.current = stateToSave;
     persistState(parsed.title, parsed.author, stateToSave);
     // Persist chapter texts in IndexedDB so re-upload is not required next session
@@ -856,8 +876,19 @@ export default function Home() {
   }
 
   async function loadBookFromMeta(title: string, author: string) {
-    const stored = await loadBookState(title, author);
+    let stored = await loadBookState(title, author);
     if (!stored) return;
+
+    // Migrate legacy state to series definition if needed
+    if (!stored.series && stored.bookMeta?.books && stored.bookMeta.books.length >= 2) {
+      const series = migrateToSeriesDefinition(stored.bookMeta, stored.excludedBooks);
+      if (series) {
+        stored = { ...stored, series };
+        // Persist migrated state
+        persistState(title, author, stored);
+      }
+    }
+
     // Try to restore chapter texts from IndexedDB
     let textMap: Map<string, string> | null = null;
     try {
