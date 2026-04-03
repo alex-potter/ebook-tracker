@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseEpub } from '@/lib/epub-parser';
-import type { AnalysisResult, BookBuddyExport, BookMeta, Character, MapState, NarrativeArc, ParentArc, ParsedEbook, PinUpdates, QueueJob, SavedBookEntry, SeriesDefinition, Snapshot, StoredBookState } from '@/types';
+import type { AnalysisResult, BookBuddyExport, BookFilter, BookMeta, Character, MapState, NarrativeArc, ParentArc, ParsedEbook, PinUpdates, QueueJob, SavedBookEntry, SeriesDefinition, Snapshot, StoredBookState } from '@/types';
 import CalibreLibrary from '@/components/CalibreLibrary';
 import CharacterCard from '@/components/CharacterCard';
 import ChapterSelector from '@/components/ChapterSelector';
@@ -26,8 +26,9 @@ import WelcomeBanner from '@/components/WelcomeBanner';
 import LibrarySubmitModal from '@/components/LibrarySubmitModal';
 import BookmarkModal from '@/components/BookmarkModal';
 import BookStructureEditor from '@/components/BookStructureEditor';
+import BookFilterSelector from '@/components/BookFilterSelector';
 import { useDerivedEntities } from '@/lib/use-derived-entities';
-import { buildInitialSeriesDefinition, migrateToSeriesDefinition } from '@/lib/series';
+import { buildInitialSeriesDefinition, migrateToSeriesDefinition, getFilteredChapterOrders } from '@/lib/series';
 
 type SortKey = 'importance' | 'name' | 'status';
 type MainTab = 'characters' | 'locations' | 'map' | 'arcs' | 'manage';
@@ -531,6 +532,7 @@ export default function Home() {
   const [bookmarkModalMode, setBookmarkModalMode] = useState<'import' | 'update'>('update');
   const [showBookStructureEditor, setShowBookStructureEditor] = useState(false);
   const [bookStructureMode, setBookStructureMode] = useState<'setup' | 'manage'>('setup');
+  const [bookFilter, setBookFilter] = useState<BookFilter>({ mode: 'all' });
   const playIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Drive playback: advance one snapshot per interval tick
@@ -582,6 +584,16 @@ export default function Home() {
   const seriesBaseRef = useRef<AnalysisResult | null>(null);
   const mapStateRef = useRef<MapState | null>(null);
   useEffect(() => { mapStateRef.current = mapState; }, [mapState]);
+
+  const filteredSnapshots = useMemo(() => {
+    const stored = storedRef.current;
+    if (!stored?.snapshots?.length || !stored.series || bookFilter.mode === 'all') {
+      return stored?.snapshots ?? [];
+    }
+    const allowedOrders = getFilteredChapterOrders(stored.series, bookFilter);
+    return stored.snapshots.filter((s) => allowedOrders.has(s.index));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storedRef.current?.snapshots, storedRef.current?.series, bookFilter]);
 
   const applyResultEdit = useCallback((
     updatedResult: AnalysisResult,
@@ -851,6 +863,7 @@ export default function Home() {
     setChapterRangeState(initialStored?.chapterRange ?? null);
     setMapState(initialMapState ?? null);
     setBook(parsed);
+    setBookFilter({ mode: 'all' });
     if (initialStored && initialStored.lastAnalyzedIndex >= 0) {
       const bookmark = initialStored.readingBookmark;
       if (bookmark != null && bookmark < initialStored.lastAnalyzedIndex) {
@@ -1554,6 +1567,13 @@ export default function Home() {
           </div>
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
+          {storedRef.current?.series && storedRef.current.series.books.length > 1 && (
+            <BookFilterSelector
+              series={storedRef.current.series}
+              filter={bookFilter}
+              onChange={setBookFilter}
+            />
+          )}
           <ProcessingQueue
             jobs={queue}
             onRemove={(id) => setQueue((q) => q.filter((j) => j.id !== id))}
