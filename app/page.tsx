@@ -2082,6 +2082,15 @@ export default function Home() {
                         ? getActiveParentArcs(storedRef.current.series, bookFilter, storedRef.current?.parentArcs)
                         : storedRef.current?.parentArcs}
                       onUpdateParentArcs={handleUpdateParentArcs}
+                      staleBooks={storedRef.current?.series ? getStaleBooks(storedRef.current.series).map((b) => b.title) : undefined}
+                      onRegroupArcs={async () => {
+                        if (!book || !storedRef.current) return;
+                        const rEnd = chapterRange?.end ?? (book.chapters.length - 1);
+                        const withParents = await maybeGenerateParentArcs(storedRef.current, book.title, book.author, rEnd, false);
+                        storedRef.current = withParents;
+                        persistState(book.title, book.author, withParents);
+                        setParentArcsRev((r) => r + 1);
+                      }}
                     />
                   )}
 
@@ -2095,6 +2104,26 @@ export default function Home() {
                         {storedRef.current.series.books.length} books
                       </span>
                     </button>
+                  )}
+                  {storedRef.current?.series && getStaleBooks(storedRef.current.series).length > 0 && (
+                    <div className="mb-4 px-4 py-3 rounded-xl border border-amber-300/50 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 flex items-center justify-between gap-3">
+                      <p className="text-xs text-amber-700 dark:text-amber-400">
+                        Book structure changed for {getStaleBooks(storedRef.current.series).map((b) => b.title).join(', ')}. Arc groupings may be outdated.
+                      </p>
+                      <button
+                        onClick={async () => {
+                          if (!book || !storedRef.current) return;
+                          const rEnd = chapterRange?.end ?? (book.chapters.length - 1);
+                          const withParents = await maybeGenerateParentArcs(storedRef.current, book.title, book.author, rEnd, false);
+                          storedRef.current = withParents;
+                          persistState(book.title, book.author, withParents);
+                          setParentArcsRev((r) => r + 1);
+                        }}
+                        className="flex-shrink-0 text-xs font-medium text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300 transition-colors"
+                      >
+                        Re-group arcs
+                      </button>
+                    </div>
                   )}
 
                   {tab === 'manage' && stored && result && (

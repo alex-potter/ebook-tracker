@@ -17,6 +17,8 @@ interface Props {
   currentChapterIndex?: number;
   parentArcs?: ParentArc[];
   onUpdateParentArcs?: (parentArcs: ParentArc[]) => void;
+  staleBooks?: string[];
+  onRegroupArcs?: () => void;
 }
 
 const STATUS_CONFIG = {
@@ -25,7 +27,7 @@ const STATUS_CONFIG = {
   resolved: { label: 'Resolved', dot: 'bg-emerald-500', badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' },
 };
 
-export default function ArcsPanel({ arcs, snapshots, chapterTitles, currentResult, onResultEdit, arcChapterMap: arcChapterMapProp, currentChapterIndex, parentArcs, onUpdateParentArcs }: Props) {
+export default function ArcsPanel({ arcs, snapshots, chapterTitles, currentResult, onResultEdit, arcChapterMap: arcChapterMapProp, currentChapterIndex, parentArcs, onUpdateParentArcs, staleBooks, onRegroupArcs }: Props) {
   const [selectedArc, setSelectedArc] = useState<string | null>(null);
   const [selectedCharName, setSelectedCharName] = useState<string | null>(null);
   const [selectedLocationName, setSelectedLocationName] = useState<string | null>(null);
@@ -275,6 +277,19 @@ export default function ArcsPanel({ arcs, snapshots, chapterTitles, currentResul
       />
     )}
     <div className="space-y-4">
+      {staleBooks && staleBooks.length > 0 && onRegroupArcs && (
+        <div className="mb-4 px-4 py-3 rounded-xl border border-amber-300/50 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 flex items-center justify-between gap-3">
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            Book structure changed for {staleBooks.join(', ')}. Arc groupings may be outdated.
+          </p>
+          <button
+            onClick={onRegroupArcs}
+            className="flex-shrink-0 text-xs font-medium text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300 transition-colors"
+          >
+            Re-group arcs
+          </button>
+        </div>
+      )}
       {parentArcs?.length ? (
         // Grouped view
         (() => {
