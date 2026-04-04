@@ -530,9 +530,28 @@ export default function Home() {
 
   function handleUpdateParentArcs(parentArcs: ParentArc[]) {
     if (!book || !storedRef.current) return;
-    const updated = { ...storedRef.current, parentArcs: parentArcs.length > 0 ? parentArcs : undefined };
-    storedRef.current = updated;
-    persistState(book.title, book.author, updated);
+    const stored = storedRef.current;
+
+    if (stored.series && bookFilter.mode === 'books' && bookFilter.indices.length === 1) {
+      // Save to the specific book's parentArcs
+      const bookIndex = bookFilter.indices[0];
+      const updatedBooks = stored.series.books.map((b) =>
+        b.index === bookIndex ? { ...b, parentArcs: parentArcs.length > 0 ? parentArcs : undefined } : b,
+      );
+      const updated = { ...stored, series: { ...stored.series, books: updatedBooks } };
+      storedRef.current = updated;
+      persistState(book.title, book.author, updated);
+    } else if (stored.series && bookFilter.mode === 'all') {
+      // Save to series-level arcs
+      const updated = { ...stored, series: { ...stored.series, seriesArcs: parentArcs.length > 0 ? parentArcs : undefined } };
+      storedRef.current = updated;
+      persistState(book.title, book.author, updated);
+    } else {
+      // Non-series fallback
+      const updated = { ...stored, parentArcs: parentArcs.length > 0 ? parentArcs : undefined };
+      storedRef.current = updated;
+      persistState(book.title, book.author, updated);
+    }
     setParentArcsRev((r) => r + 1);
   }
 
@@ -680,6 +699,46 @@ export default function Home() {
         // Remove empty parents
         parentArcs = parentArcs.filter((pa) => pa.children.length > 0);
         updated = { ...updated, parentArcs: parentArcs.length > 0 ? parentArcs : undefined };
+      }
+
+      // Also sync per-book parentArcs in series
+      if (updated.series) {
+        const oldArcNamesS = new Set((cur.result.arcs ?? []).map((a) => a.name));
+        const newArcNamesS = new Set((newResult.arcs ?? []).map((a) => a.name));
+        const removedS = [...oldArcNamesS].filter((n) => !newArcNamesS.has(n));
+        const addedS = [...newArcNamesS].filter((n) => !oldArcNamesS.has(n));
+
+        const syncedBooks = updated.series.books.map((b) => {
+          if (!b.parentArcs?.length) return b;
+          let bookParentArcs: ParentArc[];
+          if (removedS.length === 1 && addedS.length === 1) {
+            bookParentArcs = b.parentArcs.map((pa) => ({
+              ...pa,
+              children: pa.children.map((c) => c === removedS[0] ? addedS[0] : c),
+            }));
+          } else {
+            bookParentArcs = b.parentArcs.map((pa) => ({
+              ...pa,
+              children: pa.children.filter((c) => !removedS.includes(c)),
+            }));
+            if (addedS.length > 0 && removedS.length === 0) {
+              const newArcs = (newResult.arcs ?? []).filter((a) => addedS.includes(a.name));
+              for (const na of newArcs) {
+                const placed = bookParentArcs.find((pa) =>
+                  pa.children.some((c) => {
+                    const existing = (newResult.arcs ?? []).find((a) => a.name === c);
+                    return existing?.characters.some((ch) => na.characters.includes(ch));
+                  })
+                );
+                if (placed) placed.children.push(na.name);
+                else bookParentArcs[bookParentArcs.length - 1]?.children.push(na.name);
+              }
+            }
+          }
+          bookParentArcs = bookParentArcs.filter((pa) => pa.children.length > 0);
+          return { ...b, parentArcs: bookParentArcs.length > 0 ? bookParentArcs : undefined };
+        });
+        updated = { ...updated, series: { ...updated.series, books: syncedBooks } };
       }
 
       storedRef.current = updated;
@@ -1075,14 +1134,32 @@ export default function Home() {
   }
 
   /** Indices of chapters in [from, to] that are neither excluded nor front-matter. */
+  /** Indices of chapters in [from, to] that are neither excluded nor front-matter. */
   function analyzableIndices(from: number, to: number): number[] {
     if (!book) return [];
+    const stored = storedRef.current;
     const result: number[] = [];
+
+    // Build exclusion set from series definition if available
+    const seriesExcluded = new Set<number>();
+    if (stored?.series) {
+      for (const b of stored.series.books) {
+        for (const ex of b.excludedChapters) seriesExcluded.add(ex);
+      }
+      for (const uo of stored.series.unassignedChapters) seriesExcluded.add(uo);
+    }
+
     for (let i = from; i <= to; i++) {
       const ch = book.chapters[i];
       if (!ch) continue;
-      if (ch.bookIndex !== undefined && excludedBooks.has(ch.bookIndex)) continue;
-      if (excludedChapters.has(i) || isFrontMatter(ch)) continue;
+      if (stored?.series) {
+        // Series-aware exclusion
+        if (seriesExcluded.has(i)) continue;
+      } else {
+        // Legacy exclusion
+        if (ch.bookIndex !== undefined && excludedBooks.has(ch.bookIndex)) continue;
+        if (excludedChapters.has(i) || isFrontMatter(ch)) continue;
+      }
       result.push(i);
     }
     return result;
