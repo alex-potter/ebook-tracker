@@ -807,8 +807,17 @@ export default function Home() {
 
         let accumulated: AnalysisResult | null = stored.lastAnalyzedIndex >= 0 ? stored.result : null;
         let snapshots = [...(stored.snapshots ?? [])];
-        const excludedBookSet = new Set(stored.excludedBooks ?? []);
-        const excludedChapterSet = new Set(stored.excludedChapters ?? []);
+        const seriesExcluded = new Set<number>();
+        if (stored.series) {
+          for (const b of stored.series.books) {
+            if (b.excluded) {
+              for (let o = b.chapterStart; o <= b.chapterEnd; o++) seriesExcluded.add(o);
+            } else {
+              for (const ex of b.excludedChapters) seriesExcluded.add(ex);
+            }
+          }
+          for (const uo of stored.series.unassignedChapters) seriesExcluded.add(uo);
+        }
         let latestStored: StoredBookState = { ...stored };
         let recentText = '';
         const MAX_RECENT_TEXT = 30_000;
@@ -823,17 +832,30 @@ export default function Home() {
             : j));
 
           const ch = chapters[i];
-          if (ch.bookIndex !== undefined && excludedBookSet.has(ch.bookIndex)) continue;
-          if (excludedChapterSet.has(i) || isFrontMatter(ch)) {
-            if (accumulated) {
-              snapshots = upsertSnapshot(snapshots, i, accumulated);
-              latestStored = { ...latestStored, lastAnalyzedIndex: i, result: accumulated, snapshots };
-              persistState(title, author, latestStored);
-              if (bookRef.current?.title === title && bookRef.current?.author === author) {
-                storedRef.current = latestStored;
+          if (stored.series) {
+            if (seriesExcluded.has(i)) {
+              if (accumulated) {
+                snapshots = upsertSnapshot(snapshots, i, accumulated);
+                latestStored = { ...latestStored, lastAnalyzedIndex: i, result: accumulated, snapshots };
+                persistState(title, author, latestStored);
+                if (bookRef.current?.title === title && bookRef.current?.author === author) {
+                  storedRef.current = latestStored;
+                }
               }
+              continue;
             }
-            continue;
+          } else {
+            if (isFrontMatter(ch)) {
+              if (accumulated) {
+                snapshots = upsertSnapshot(snapshots, i, accumulated);
+                latestStored = { ...latestStored, lastAnalyzedIndex: i, result: accumulated, snapshots };
+                persistState(title, author, latestStored);
+                if (bookRef.current?.title === title && bookRef.current?.author === author) {
+                  storedRef.current = latestStored;
+                }
+              }
+              continue;
+            }
           }
 
           const { result: chResult, model: chModel } = await analyzeChapter(title, author, { title: ch.title, text: ch.text }, accumulated, chapters.map((c) => c.title));
