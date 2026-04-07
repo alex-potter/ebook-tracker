@@ -535,6 +535,74 @@ export default function Home() {
     setShowBookStructureEditor(false);
   }
 
+  async function handleReextractTitles(
+    chapterOrders: number[],
+  ): Promise<Map<number, { title: string; preview?: string }>> {
+    if (!book) return new Map();
+
+    const { loadChapters } = await import('@/lib/chapter-storage');
+    const { extractExtendedHeading, extractText, extractPreview } = await import('@/lib/epub-parser');
+
+    const entries = await loadChapters(book.title, book.author);
+    if (!entries) return new Map();
+
+    const orderToId = new Map<number, string>();
+    if (storedRef.current?.bookMeta) {
+      for (const ch of storedRef.current.bookMeta.chapters) {
+        orderToId.set(ch.order, ch.id);
+      }
+    }
+
+    const result = new Map<number, { title: string; preview?: string }>();
+    for (const order of chapterOrders) {
+      const id = orderToId.get(order);
+      if (!id) continue;
+      const entry = entries.find((e) => e.id === id);
+      if (!entry) continue;
+
+      let newTitle: string | undefined;
+
+      // Try re-extraction from stored HTML head
+      if (entry.htmlHead) {
+        const headingMatch = entry.htmlHead.match(/<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/i);
+        const rawTitle = headingMatch?.[1] ? extractText(headingMatch[1]) : '';
+        if (rawTitle.trim()) {
+          newTitle = rawTitle.trim();
+        } else {
+          const extended = extractExtendedHeading(entry.htmlHead);
+          if (extended) newTitle = extended;
+        }
+      }
+
+      // Fallback: use first line of plain text as title
+      if (!newTitle) {
+        const firstLine = entry.text.split('\n').find((l) => l.trim().length > 0)?.trim();
+        if (firstLine && firstLine.length < 100) {
+          newTitle = firstLine;
+        }
+      }
+
+      if (newTitle) {
+        const preview = extractPreview(entry.text);
+        result.set(order, { title: newTitle, preview: preview || undefined });
+      }
+    }
+
+    // Update bookMeta with new titles
+    if (result.size > 0 && storedRef.current?.bookMeta) {
+      const updatedChapters = storedRef.current.bookMeta.chapters.map((ch) => {
+        const update = result.get(ch.order);
+        if (!update) return ch;
+        return { ...ch, title: update.title, preview: update.preview ?? ch.preview };
+      });
+      const updatedMeta = { ...storedRef.current.bookMeta, chapters: updatedChapters };
+      storedRef.current = { ...storedRef.current, bookMeta: updatedMeta };
+      persistState(book.title, book.author, storedRef.current);
+    }
+
+    return result;
+  }
+
   function completeSetup(range: { start: number; end: number }) {
     setChapterRange(range);
     setNeedsSetup(false);
@@ -1643,6 +1711,7 @@ export default function Home() {
           onSave={handleSaveSeries}
           onClose={() => setShowBookStructureEditor(false)}
           mode={bookStructureMode}
+          onReextract={handleReextractTitles}
         />
       )}
       {showBookmarkModal && book && (

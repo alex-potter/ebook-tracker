@@ -362,7 +362,7 @@ function titlePatternDetection(
   return result;
 }
 
-function extractText(html: string): string {
+export function extractText(html: string): string {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<style[\s\S]*?<\/style>/gi, '')
@@ -386,7 +386,7 @@ function extractText(html: string): string {
 
 /** Scan the first portion of HTML for heading-like elements beyond h1-h3.
  *  Looks for h4-h6, bold/strong-only paragraphs, and elements with title-like classes. */
-function extractExtendedHeading(html: string): string {
+export function extractExtendedHeading(html: string): string {
   const head = html.slice(0, 2000);
 
   // Try h4-h6
@@ -414,7 +414,7 @@ function extractExtendedHeading(html: string): string {
 }
 
 /** Extract a short preview from the chapter's plain text — first non-empty line, capped at 80 chars. */
-function extractPreview(text: string): string {
+export function extractPreview(text: string): string {
   const lines = text.split('\n');
   for (const line of lines) {
     const trimmed = line.trim();

@@ -15,32 +15,34 @@ interface Props {
   onSave: (series: SeriesDefinition) => void;
   onClose: () => void;
   mode: 'setup' | 'manage';
+  onReextract?: (chapterOrders: number[]) => Promise<Map<number, { title: string; preview?: string }>>;
 }
 
-export default function BookStructureEditor({ series, chapters, onSave, onClose, mode }: Props) {
+export default function BookStructureEditor({ series, chapters, onSave, onClose, mode, onReextract }: Props) {
   const [books, setBooks] = useState<BookDefinition[]>(() => [...series.books].sort((a, b) => a.index - b.index));
   const [editingTitle, setEditingTitle] = useState<number | null>(null);
   const [expandedBook, setExpandedBook] = useState<number | null>(null);
   const [splitMode, setSplitMode] = useState<number | null>(null); // bookIndex being split
+  const [localChapters, setLocalChapters] = useState(chapters);
 
   const assignedOrders = new Set<number>();
   for (const b of books) {
     for (let o = b.chapterStart; o <= b.chapterEnd; o++) assignedOrders.add(o);
   }
-  const unassigned = chapters.filter((ch) => !assignedOrders.has(ch.order));
+  const unassigned = localChapters.filter((ch) => !assignedOrders.has(ch.order));
 
   function getChapterTitle(order: number): string {
-    return chapters.find((ch) => ch.order === order)?.title ?? `Chapter ${order + 1}`;
+    return localChapters.find((ch) => ch.order === order)?.title ?? `Chapter ${order + 1}`;
   }
 
   function getContentTypeLabel(order: number): string | null {
-    const ch = chapters.find((c) => c.order === order);
+    const ch = localChapters.find((c) => c.order === order);
     if (!ch?.contentType || ch.contentType === 'story') return null;
     return ch.contentType.replace('-', ' ');
   }
 
   function getChapterPreview(order: number): string | null {
-    return chapters.find((c) => c.order === order)?.preview ?? null;
+    return localChapters.find((c) => c.order === order)?.preview ?? null;
   }
 
   function handleConfirmAll() {
@@ -76,11 +78,13 @@ export default function BookStructureEditor({ series, chapters, onSave, onClose,
   }
 
   function handleSplitBook(bookIndex: number, splitAtOrder: number) {
+    let newBookIndex: number | null = null;
     setBooks((prev) => {
       const book = prev.find((b) => b.index === bookIndex);
       if (!book || splitAtOrder <= book.chapterStart || splitAtOrder > book.chapterEnd) return prev;
 
       const maxIdx = Math.max(...prev.map((b) => b.index));
+      newBookIndex = maxIdx + 1;
       const book1: BookDefinition = {
         ...book,
         chapterEnd: splitAtOrder - 1,
@@ -89,8 +93,8 @@ export default function BookStructureEditor({ series, chapters, onSave, onClose,
         arcGroupingHash: undefined,
       };
       const book2: BookDefinition = {
-        index: maxIdx + 1,
-        title: `Book ${maxIdx + 2}`,
+        index: newBookIndex,
+        title: `Book ${newBookIndex + 1}`,
         chapterStart: splitAtOrder,
         chapterEnd: book.chapterEnd,
         excludedChapters: book.excludedChapters.filter((o) => o >= splitAtOrder),
@@ -98,6 +102,9 @@ export default function BookStructureEditor({ series, chapters, onSave, onClose,
       };
       return [...prev.filter((b) => b.index !== bookIndex), book1, book2].sort((a, b) => a.chapterStart - b.chapterStart);
     });
+    if (newBookIndex !== null) {
+      triggerReextract([bookIndex, newBookIndex]);
+    }
   }
 
   function handleMergeWithNext(bookIndex: number) {
@@ -159,6 +166,7 @@ export default function BookStructureEditor({ series, chapters, onSave, onClose,
       // Absorb from unassigned
       return prev.map((b) => b.index === bookIndex ? { ...b, chapterEnd: newEnd, parentArcs: undefined, arcGroupingHash: undefined } : b);
     });
+    triggerReextract([bookIndex]);
   }
 
   function handleShrinkEnd(bookIndex: number) {
@@ -174,6 +182,7 @@ export default function BookStructureEditor({ series, chapters, onSave, onClose,
         arcGroupingHash: undefined,
       } : b);
     });
+    triggerReextract([bookIndex]);
   }
 
   function handleExpandStart(bookIndex: number) {
@@ -199,6 +208,7 @@ export default function BookStructureEditor({ series, chapters, onSave, onClose,
       }
       return prev.map((b) => b.index === bookIndex ? { ...b, chapterStart: newStart, parentArcs: undefined, arcGroupingHash: undefined } : b);
     });
+    triggerReextract([bookIndex]);
   }
 
   function handleShrinkStart(bookIndex: number) {
@@ -214,6 +224,29 @@ export default function BookStructureEditor({ series, chapters, onSave, onClose,
         arcGroupingHash: undefined,
       } : b);
     });
+    triggerReextract([bookIndex]);
+  }
+
+  async function triggerReextract(affectedBookIndices: number[]) {
+    if (!onReextract) return;
+    const partNOrders: number[] = [];
+    for (const bi of affectedBookIndices) {
+      const book = books.find((b) => b.index === bi);
+      if (!book) continue;
+      for (let o = book.chapterStart; o <= book.chapterEnd; o++) {
+        const title = localChapters.find((ch) => ch.order === o)?.title ?? '';
+        if (/^Part \d+$/.test(title)) partNOrders.push(o);
+      }
+    }
+    if (partNOrders.length === 0) return;
+
+    const newTitles = await onReextract(partNOrders);
+    if (newTitles.size === 0) return;
+    setLocalChapters((prev) => prev.map((ch) => {
+      const update = newTitles.get(ch.order);
+      if (!update) return ch;
+      return { ...ch, title: update.title, preview: update.preview ?? ch.preview };
+    }));
   }
 
   function handleSave() {
