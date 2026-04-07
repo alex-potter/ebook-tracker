@@ -80,7 +80,16 @@ export async function parseEpub(file: File): Promise<ParsedEbook> {
     }
 
     // Store the resolved href so we can map it during omnibus detection
-    chapters.push({ id: itemId, title: chapterTitle, text: text.trim(), order: order++, _href: candidates[0] } as EbookChapter & { _href: string });
+    const contentType = detectContentType(chapterTitle, text.trim().length);
+
+    chapters.push({
+      id: itemId,
+      title: chapterTitle,
+      text: text.trim(),
+      order: order++,
+      contentType,
+      _href: candidates[0],
+    } as EbookChapter & { _href: string });
   }
 
   if (chapters.length === 0) {
@@ -173,6 +182,20 @@ async function buildNcxTitleMap(
 /** Returns true for generic/useless titles we should skip in favour of HTML heading or Part N. */
 function isGenericTitle(title: string): boolean {
   return /^(chapter|part|section|ch\.?|p\.?)\s*\d+$/i.test(title.trim());
+}
+
+const FRONT_MATTER_TITLE_RE = /^\s*(acknowledgements?|acknowledgments?|foreword|fore\s*word|preface|dedication|about\s+the\s+author|author'?s?\s+note|note\s+(from|by)\s+the\s+author|copyright|contents|table\s+of\s+contents|cast\s+of\s+characters|dramatis\s+personae|maps?|epigraph|title\s+page)\s*$/i;
+
+const BACK_MATTER_TITLE_RE = /^\s*(acknowledgements?|acknowledgments?|about\s+the\s+author|author'?s?\s+note|note\s+(from|by)\s+the\s+author|also\s+by|other\s+books|bibliography|glossary|index|appendix|afterword|bonus|excerpt|preview|sneak\s+peek|reading\s+group|book\s+club|discussion\s+questions?)\s*$/i;
+
+export function detectContentType(
+  title: string,
+  textLength: number,
+): 'story' | 'front-matter' | 'back-matter' | 'structural' {
+  if (textLength < 50) return 'structural';
+  if (FRONT_MATTER_TITLE_RE.test(title)) return 'front-matter';
+  if (BACK_MATTER_TITLE_RE.test(title)) return 'back-matter';
+  return 'story';
 }
 
 // ---- Omnibus detection ----
