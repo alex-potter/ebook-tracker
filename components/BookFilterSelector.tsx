@@ -47,7 +47,8 @@ export default function BookFilterSelector({ series, filter, onChange }: Props) 
       }
     } else {
       next.add(bookIndex);
-      if (next.size === series.books.length) {
+      const nonExcludedCount = series.books.filter((b) => !b.excluded).length;
+      if (next.size === nonExcludedCount) {
         onChange({ mode: 'all' });
         return;
       }
@@ -90,7 +91,7 @@ export default function BookFilterSelector({ series, filter, onChange }: Props) 
             All Books
           </button>
           <div className="border-t border-stone-100 dark:border-zinc-800 my-1" />
-          {[...series.books].sort((a, b) => a.index - b.index).map((book) => {
+          {[...series.books].filter((b) => !b.excluded).sort((a, b) => a.index - b.index).map((book) => {
             const isSelected = filter.mode === 'all' || selectedIndices?.has(book.index);
             return (
               <button
