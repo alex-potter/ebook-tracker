@@ -28,7 +28,7 @@ import BookmarkModal from '@/components/BookmarkModal';
 import BookStructureEditor from '@/components/BookStructureEditor';
 import BookFilterSelector from '@/components/BookFilterSelector';
 import { useDerivedEntities } from '@/lib/use-derived-entities';
-import { buildInitialSeriesDefinition, migrateToSeriesDefinition, getFilteredChapterOrders, getActiveParentArcs, getStaleBooks, computeArcGroupingHash } from '@/lib/series';
+import { buildInitialSeriesDefinition, migrateToSeriesDefinition, getActiveParentArcs, getStaleBooks, computeArcGroupingHash } from '@/lib/series';
 import { generateParentArcs, generateSeriesArcs } from '@/lib/generate-arcs';
 
 type SortKey = 'importance' | 'name' | 'status';
@@ -424,8 +424,6 @@ export default function Home() {
   // Stable ref to the active book so the queue processor doesn't capture a stale closure
   const bookRef = useRef<ParsedEbook | null>(null);
 
-  const [excludedBooks, setExcludedBooks] = useState<Set<number>>(new Set());
-  const [excludedChapters, setExcludedChapters] = useState<Set<number>>(new Set());
   const [chapterRange, setChapterRangeState] = useState<{ start: number; end: number } | null>(null);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [mapState, setMapState] = useState<MapState | null>(null);
@@ -465,32 +463,6 @@ export default function Home() {
     a.download = `${title} — ${author}.bookbuddy`;
     a.click();
     URL.revokeObjectURL(url);
-  }
-
-  function toggleBook(bookIndex: number) {
-    setExcludedBooks((prev) => {
-      const next = new Set(prev);
-      if (next.has(bookIndex)) next.delete(bookIndex); else next.add(bookIndex);
-      if (book && storedRef.current) {
-        const updated = { ...storedRef.current, excludedBooks: [...next] };
-        storedRef.current = updated;
-        persistState(book.title, book.author, updated);
-      }
-      return next;
-    });
-  }
-
-  function toggleChapter(chapterIndex: number) {
-    setExcludedChapters((prev) => {
-      const next = new Set(prev);
-      if (next.has(chapterIndex)) next.delete(chapterIndex); else next.add(chapterIndex);
-      if (book && storedRef.current) {
-        const updated = { ...storedRef.current, excludedChapters: [...next] };
-        storedRef.current = updated;
-        persistState(book.title, book.author, updated);
-      }
-      return next;
-    });
   }
 
   function setChapterRange(range: { start: number; end: number } | null) {
@@ -633,15 +605,48 @@ export default function Home() {
   const mapStateRef = useRef<MapState | null>(null);
   useEffect(() => { mapStateRef.current = mapState; }, [mapState]);
 
-  const filteredSnapshots = useMemo(() => {
-    const stored = storedRef.current;
-    if (!stored?.snapshots?.length || !stored.series || bookFilter.mode === 'all') {
-      return stored?.snapshots ?? [];
+  const visibleChapterOrders = useMemo(() => {
+    const series = storedRef.current?.series;
+    if (!series) return null;
+    const targetBooks = bookFilter.mode === 'all'
+      ? series.books
+      : series.books.filter((b) => bookFilter.indices.includes(b.index));
+    const visible = new Set<number>();
+    for (const b of targetBooks) {
+      if (b.excluded) continue;
+      for (let o = b.chapterStart; o <= b.chapterEnd; o++) {
+        if (!b.excludedChapters.includes(o)) visible.add(o);
+      }
     }
-    const allowedOrders = getFilteredChapterOrders(stored.series, bookFilter);
-    return stored.snapshots.filter((s) => allowedOrders.has(s.index));
+    return visible;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storedRef.current?.snapshots, storedRef.current?.series, bookFilter]);
+  }, [storedRef.current?.series, bookFilter]);
+
+  const visibleSnapshots = useMemo(() => {
+    const snaps = storedRef.current?.snapshots ?? [];
+    if (!visibleChapterOrders) return snaps;
+    return snaps.filter((s) => visibleChapterOrders.has(s.index));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storedRef.current?.snapshots, visibleChapterOrders]);
+
+  // Auto-navigate when current chapter falls outside visible set
+  useEffect(() => {
+    if (!visibleChapterOrders || visibleChapterOrders.size === 0 || visibleChapterOrders.has(currentIndex)) return;
+    const stored = storedRef.current;
+    if (stored?.snapshots?.length) {
+      const visibleSnaps = stored.snapshots
+        .filter((s) => visibleChapterOrders.has(s.index))
+        .sort((a, b) => b.index - a.index);
+      if (visibleSnaps.length > 0) {
+        const target = visibleSnaps[0];
+        setCurrentIndex(target.index);
+        setResult(target.result);
+        setViewingSnapshotIndex(target.index);
+        return;
+      }
+    }
+    setCurrentIndex(Math.min(...visibleChapterOrders));
+  }, [visibleChapterOrders, currentIndex]);
 
   const applyResultEdit = useCallback((
     updatedResult: AnalysisResult,
@@ -946,8 +951,6 @@ export default function Home() {
       saveChapters(parsed.title, parsed.author, chaptersWithText).catch(() => {});
     }
     seriesBaseRef.current = initialStored?.lastAnalyzedIndex === -1 ? initialStored.result : null;
-    setExcludedBooks(initialStored?.excludedBooks ? new Set(initialStored.excludedBooks) : new Set());
-    setExcludedChapters(initialStored?.excludedChapters ? new Set(initialStored.excludedChapters) : new Set());
     setChapterRangeState(initialStored?.chapterRange ?? null);
     setMapState(initialMapState ?? null);
     setBook(parsed);
@@ -1133,33 +1136,14 @@ export default function Home() {
     activateBook(pendingBook, null);
   }
 
-  /** Indices of chapters in [from, to] that are neither excluded nor front-matter. */
-  /** Indices of chapters in [from, to] that are neither excluded nor front-matter. */
   function analyzableIndices(from: number, to: number): number[] {
     if (!book) return [];
-    const stored = storedRef.current;
     const result: number[] = [];
-
-    // Build exclusion set from series definition if available
-    const seriesExcluded = new Set<number>();
-    if (stored?.series) {
-      for (const b of stored.series.books) {
-        for (const ex of b.excludedChapters) seriesExcluded.add(ex);
-      }
-      for (const uo of stored.series.unassignedChapters) seriesExcluded.add(uo);
-    }
-
     for (let i = from; i <= to; i++) {
       const ch = book.chapters[i];
       if (!ch) continue;
-      if (stored?.series) {
-        // Series-aware exclusion
-        if (seriesExcluded.has(i)) continue;
-      } else {
-        // Legacy exclusion
-        if (ch.bookIndex !== undefined && excludedBooks.has(ch.bookIndex)) continue;
-        if (excludedChapters.has(i) || isFrontMatter(ch)) continue;
-      }
+      if (visibleChapterOrders && !visibleChapterOrders.has(i)) continue;
+      if (!visibleChapterOrders && isFrontMatter(ch)) continue;
       result.push(i);
     }
     return result;
@@ -1232,7 +1216,7 @@ export default function Home() {
       setRebuildProgress(null);
       analyzeCancelRef.current = false;
     }
-  }, [book, currentIndex, excludedBooks, excludedChapters, chapterRange, needsSetup]);
+  }, [book, currentIndex, visibleChapterOrders, chapterRange, needsSetup]);
 
   const handleRebuild = useCallback(async () => {
     if (!book) return;
@@ -1277,7 +1261,7 @@ export default function Home() {
       setRebuildProgress(null);
       rebuildCancelRef.current = false;
     }
-  }, [book, currentIndex, excludedBooks, excludedChapters, chapterRange]);
+  }, [book, currentIndex, visibleChapterOrders, chapterRange]);
 
   // Process the full range start→end regardless of currentIndex
   const handleProcessBook = useCallback(async () => {
@@ -1324,7 +1308,7 @@ export default function Home() {
       setRebuildProgress(null);
       rebuildCancelRef.current = false;
     }
-  }, [book, excludedBooks, excludedChapters, chapterRange]);
+  }, [book, visibleChapterOrders, chapterRange]);
 
   const handleDeleteSnapshot = useCallback((index: number) => {
     if (!book || !storedRef.current) return;
@@ -1354,7 +1338,7 @@ export default function Home() {
   const derived = useDerivedEntities(
     storedRef.current?.snapshots ?? [],
     result ?? null,
-    filteredSnapshots.length !== (storedRef.current?.snapshots ?? []).length ? filteredSnapshots : undefined,
+    visibleSnapshots.length !== (storedRef.current?.snapshots ?? []).length ? visibleSnapshots : undefined,
   );
   const displayed = characters
     .filter((c) => {
@@ -1647,7 +1631,7 @@ export default function Home() {
       )}
       {showTimeline && book && (
         <StoryTimeline
-          snapshots={stored?.snapshots ?? []}
+          snapshots={visibleSnapshots}
           chapterTitles={book.chapters.map((ch) => ch.title)}
           currentIndex={viewingSnapshotIndex ?? stored?.lastAnalyzedIndex ?? 0}
           currentResult={result ?? undefined}
@@ -1794,10 +1778,7 @@ export default function Home() {
             rebuildProgress={rebuildProgress}
             lastAnalyzedIndex={stored?.lastAnalyzedIndex ?? null}
             snapshotIndices={snapshotIndices}
-            excludedBooks={excludedBooks}
-            onToggleBook={toggleBook}
-            excludedChapters={excludedChapters}
-            onToggleChapter={toggleChapter}
+            visibleChapterOrders={visibleChapterOrders}
             chapterRange={chapterRange}
             onSetRange={setChapterRange}
             onDeleteSnapshot={handleDeleteSnapshot}
@@ -2118,7 +2099,7 @@ export default function Home() {
                             <CharacterCard
                               key={character.name}
                               character={character}
-                              snapshots={stored?.snapshots ?? []}
+                              snapshots={visibleSnapshots}
                               chapterTitles={book.chapters.map((ch) => ch.title)}
                               currentResult={result}
                               onResultEdit={applyResultEdit}
@@ -2135,7 +2116,7 @@ export default function Home() {
                       characters={characters}
                       locations={result.locations}
                       bookTitle={book.title}
-                      snapshots={stored?.snapshots ?? []}
+                      snapshots={visibleSnapshots}
                       chapterTitles={book.chapters.map((ch) => ch.title)}
                       currentResult={result}
                       onResultEdit={applyResultEdit}
@@ -2149,7 +2130,7 @@ export default function Home() {
                   {tab === 'arcs' && (
                     <ArcsPanel
                       arcs={result.arcs ?? []}
-                      snapshots={stored?.snapshots ?? []}
+                      snapshots={visibleSnapshots}
                       chapterTitles={book.chapters.map((ch) => ch.title)}
                       currentResult={result}
                       onResultEdit={applyResultEdit}
