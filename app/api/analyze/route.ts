@@ -1938,7 +1938,7 @@ export async function POST(req: NextRequest) {
         locations: (firstResult.locations ?? []).map((l) => l.name),
         characterSnapshots: firstResult.characters,
         locationSnapshots: firstResult.locations ?? [],
-        arcSnapshots: firstResult.arcs,
+        arcSnapshots: firstResult.arcs?.length ? firstResult.arcs : undefined,
         chapterProgress: (0 + 0.5) / chunks[0].total,
         textAnchor: extractTextAnchor(chunks[0].text),
       });

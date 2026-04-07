@@ -1297,12 +1297,12 @@ export default function Home() {
         const i = toAnalyze[step];
         const ch = book.chapters[i];
         setRebuildProgress({ current: step + 1, total, chapterTitle: ch.title, chapterIndex: i });
-        const { result: chapterResult, model: chapterModel, rateLimitWaitMs } = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated, book.chapters.map((c) => c.title));
+        const { result: chapterResult, model: chapterModel, rateLimitWaitMs, events: chapterEvents } = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated, book.chapters.map((c) => c.title));
         if (rateLimitWaitMs) {
           setRebuildProgress((prev) => prev ? { ...prev, chapterTitle: `${ch.title} (rate limit: waited ${Math.ceil(rateLimitWaitMs / 1000)}s)` } : prev);
         }
         accumulated = chapterResult;
-        snapshots = upsertSnapshot(snapshots, i, accumulated, chapterModel, APP_VERSION);
+        snapshots = upsertSnapshot(snapshots, i, accumulated, chapterModel, APP_VERSION, chapterEvents);
         const partial: StoredBookState = { ...analyzeBase, lastAnalyzedIndex: i, result: accumulated, snapshots };
         storedRef.current = partial;
         persistState(book.title, book.author, partial);
@@ -1346,9 +1346,9 @@ export default function Home() {
         const i = toRebuild[step];
         const ch = book.chapters[i];
         setRebuildProgress({ current: step + 1, total: rebuildTotal, chapterTitle: ch.title, chapterIndex: i });
-        const { result: rebuildResult, model: rebuildModel } = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated, book.chapters.map((c) => c.title));
+        const { result: rebuildResult, model: rebuildModel, events: rebuildEvents } = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated, book.chapters.map((c) => c.title));
         accumulated = rebuildResult;
-        snapshots = upsertSnapshot(snapshots, i, accumulated, rebuildModel, APP_VERSION);
+        snapshots = upsertSnapshot(snapshots, i, accumulated, rebuildModel, APP_VERSION, rebuildEvents);
         const partial: StoredBookState = { ...rebuildBase, lastAnalyzedIndex: i, result: accumulated, snapshots };
         storedRef.current = partial;
         persistState(book.title, book.author, partial);
@@ -1392,9 +1392,9 @@ export default function Home() {
         const i = toProcess[step];
         const ch = book.chapters[i];
         setRebuildProgress({ current: step + 1, total, chapterTitle: ch.title, chapterIndex: i });
-        const { result: chResult, model: chModel } = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated, book.chapters.map((c) => c.title));
+        const { result: chResult, model: chModel, events: chEvents } = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated, book.chapters.map((c) => c.title));
         accumulated = chResult;
-        snapshots = upsertSnapshot(snapshots, i, accumulated, chModel, APP_VERSION);
+        snapshots = upsertSnapshot(snapshots, i, accumulated, chModel, APP_VERSION, chEvents);
         const partial: StoredBookState = { ...processBase, lastAnalyzedIndex: i, result: accumulated, snapshots };
         storedRef.current = partial;
         persistState(book.title, book.author, partial);
