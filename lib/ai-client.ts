@@ -23,7 +23,7 @@ import type { ProviderType } from './rate-limiter';
 // ---------------------------------------------------------------------------
 
 export interface AiSettings {
-  provider: 'anthropic' | 'ollama' | 'gemini' | 'openai-compatible';
+  provider: 'anthropic' | 'ollama' | 'gemini' | 'openai-compatible' | 'local';
   anthropicKey: string;
   ollamaUrl: string;   // e.g. http://192.168.1.x:11434/v1
   model: string;
@@ -33,6 +33,7 @@ export interface AiSettings {
   openaiCompatibleName: string;
   ollamaContextLength?: number;         // user override
   ollamaDetectedContextLength?: number; // last auto-detected value
+  localModel?: string;                  // filename of the selected downloaded GGUF
 }
 
 const SETTINGS_KEY = 'cc-ai-settings';
@@ -53,6 +54,7 @@ export function loadAiSettings(): AiSettings {
         openaiCompatibleName: parsed.openaiCompatibleName ?? '',
         ollamaContextLength: parsed.ollamaContextLength ?? undefined,
         ollamaDetectedContextLength: parsed.ollamaDetectedContextLength ?? undefined,
+        localModel: parsed.localModel ?? undefined,
       };
     }
   } catch { /* ignore */ }
@@ -67,6 +69,7 @@ export function loadAiSettings(): AiSettings {
     openaiCompatibleName: '',
     ollamaContextLength: undefined,
     ollamaDetectedContextLength: undefined,
+    localModel: undefined,
   };
 }
 
