@@ -447,11 +447,11 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
         <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={mode !== 'view' ? () => setMode('view') : undefined} />
 
         <div
-          className="relative z-10 w-full max-w-lg max-h-[85vh] overflow-y-auto bg-white dark:bg-zinc-900 rounded-2xl border border-stone-200 dark:border-zinc-800 shadow-2xl"
+          className="relative z-10 w-full max-w-lg max-h-[85vh] max-h-[85dvh] flex flex-col bg-white dark:bg-zinc-900 rounded-2xl border border-stone-200 dark:border-zinc-800 shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="p-6 border-b border-stone-200 dark:border-zinc-800 pb-0">
+          <div className="flex-shrink-0 p-6 border-b border-stone-200 dark:border-zinc-800 pb-0">
             <div className="flex items-start gap-4">
               <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-stone-100 dark:bg-zinc-800 flex items-center justify-center text-2xl">
                 📍
@@ -531,7 +531,7 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
             )}
           </div>
 
-          <div className="p-6 space-y-5">
+          <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-5">
             {mode === 'edit' && renderEditForm()}
             {mode === 'split' && renderSplitForm()}
             {mode === 'delete' && renderDeleteConfirm()}
@@ -578,15 +578,15 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
                 {relationships.length > 0 && (
                   <section>
                     <p className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider mb-2">Related Places</p>
-                    <ul className="space-y-1.5">
+                    <ul className="space-y-2.5">
                       {relationships.map((r) => (
-                        <li key={r.location} className="flex items-center gap-2 text-sm">
-                          <span className="text-xs px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400 border border-violet-500/20 flex-shrink-0">{r.relationship}</span>
+                        <li key={r.location}>
                           <button
                             onClick={(e) => { e.stopPropagation(); onEntityClick?.('location', r.location); }}
-                            className={`text-stone-700 dark:text-zinc-300 ${onEntityClick ? 'hover:underline cursor-pointer' : ''}`}
+                            className={`text-sm font-medium text-stone-700 dark:text-zinc-300 ${onEntityClick ? 'hover:underline cursor-pointer' : ''}`}
                             disabled={!onEntityClick}
                           >{r.location}</button>
+                          <p className="text-xs text-violet-400 mt-0.5 leading-snug">{r.relationship}</p>
                         </li>
                       ))}
                     </ul>

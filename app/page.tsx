@@ -639,6 +639,8 @@ export default function Home() {
   const [bookFilter, setBookFilter] = useState<BookFilter>({ mode: 'all' });
   const [showSearch, setShowSearch] = useState(false);
   const [searchEntity, setSearchEntity] = useState<{ type: 'character' | 'location' | 'arc'; name: string } | null>(null);
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
+  const headerMenuRef = useRef<HTMLDivElement>(null);
   const playIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Drive playback: advance one snapshot per interval tick
@@ -865,6 +867,18 @@ export default function Home() {
 
   // Keep bookRef in sync so the queue processor can read the active book without stale closures
   useEffect(() => { bookRef.current = book; }, [book]);
+
+  // Close header overflow menu on outside click
+  useEffect(() => {
+    if (!showHeaderMenu) return;
+    function handleClick(e: MouseEvent) {
+      if (headerMenuRef.current && !headerMenuRef.current.contains(e.target as Node)) {
+        setShowHeaderMenu(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showHeaderMenu]);
 
   // Queue processor: runs one job at a time, saving results to localStorage
   useEffect(() => {
@@ -1766,12 +1780,12 @@ export default function Home() {
           onJumpToChapter={(i) => { handleChapterChange(i); setShowTimeline(false); }}
         />
       )}
-      <header className="bg-white dark:bg-zinc-900 border-b border-stone-200 dark:border-zinc-800 px-4 py-3 flex items-center justify-between gap-2 flex-shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
+      <header className="bg-white dark:bg-zinc-900 border-b border-stone-200 dark:border-zinc-800 px-2 sm:px-4 py-2 sm:py-3 flex items-center justify-between gap-1 sm:gap-2 flex-shrink-0">
+        <div className="flex items-center gap-1 sm:gap-2 min-w-0">
           {/* Hamburger — mobile only */}
           <button
             onClick={() => setSidebarOpen(true)}
-            className="lg:hidden flex-shrink-0 w-9 h-9 flex items-center justify-center text-stone-500 dark:text-zinc-400 hover:text-stone-800 dark:hover:text-zinc-200 transition-colors rounded-lg"
+            className="lg:hidden flex-shrink-0 w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-stone-500 dark:text-zinc-400 hover:text-stone-800 dark:hover:text-zinc-200 transition-colors rounded-lg"
             aria-label="Open chapter list"
           >
             <svg width="18" height="14" viewBox="0 0 18 14" fill="none">
@@ -1780,13 +1794,13 @@ export default function Home() {
               <rect y="12" width="18" height="2" rx="1" fill="currentColor"/>
             </svg>
           </button>
-          <img src={`${basePath}/icon.svg`} alt="BookBuddy" className="w-6 h-6 flex-shrink-0 dark:invert" />
+          <img src={`${basePath}/icon.svg`} alt="BookBuddy" className="w-6 h-6 flex-shrink-0 dark:invert hidden sm:block" />
           <div className="min-w-0">
             <h1 className="font-bold text-stone-900 dark:text-zinc-100 leading-tight truncate text-sm sm:text-base">{book.title}</h1>
             <p className="text-xs text-stone-400 dark:text-zinc-500 truncate">{book.author}</p>
           </div>
         </div>
-        <div className="flex items-center gap-3 flex-shrink-0">
+        <div className="flex items-center gap-1 sm:gap-3">
           {storedRef.current?.series && storedRef.current.series.books.length > 1 && (
             <BookFilterSelector
               series={storedRef.current.series}
@@ -1815,13 +1829,14 @@ export default function Home() {
               <svg width="8" height="11" viewBox="0 0 10 14" fill={stored?.readingBookmark != null ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={stored?.readingBookmark != null ? 0 : 1.5} className="flex-shrink-0">
                 <path d="M0 0h10v14L5 10.5 0 14V0z"/>
               </svg>
-              {stored?.readingBookmark != null ? `Ch.${stored.readingBookmark + 1}` : 'Bookmark'}
+              <span className="hidden sm:inline">{stored?.readingBookmark != null ? `Ch.${stored.readingBookmark + 1}` : 'Bookmark'}</span>
             </button>
           )}
+          {/* Desktop-only inline buttons */}
           {hasStoredState && (
             <button
               onClick={() => exportBook(book.title, book.author, book)}
-              className="text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
+              className="hidden sm:inline text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
               title="Export .bookbuddy file"
             >
               Export
@@ -1830,7 +1845,7 @@ export default function Home() {
           {hasStoredState && stored.lastAnalyzedIndex >= 0 && (
             <button
               onClick={handleShare}
-              className="text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
+              className="hidden sm:inline text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
               title="Share reading context with any AI assistant (Gemini, ChatGPT, Claude…)"
             >
               {shareLabel}
@@ -1847,24 +1862,76 @@ export default function Home() {
           )}
           <button
             onClick={() => setShowSettings(true)}
-            className="text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
+            className="hidden sm:inline text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
             title="AI Settings"
           >
             ⚙
           </button>
           <button
             onClick={toggleTheme}
-            className="text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
+            className="hidden sm:inline text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
             title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
           >
             {isDark ? '☀︎' : '◗'}
           </button>
           <button
             onClick={() => { setBook(null); setResult(null); storedRef.current = null; seriesBaseRef.current = null; }}
-            className="text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors whitespace-nowrap"
+            className="hidden sm:inline text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors whitespace-nowrap"
           >
             Change book
           </button>
+          {/* Mobile overflow menu */}
+          <div className="relative sm:hidden" ref={headerMenuRef}>
+            <button
+              onClick={() => setShowHeaderMenu((v) => !v)}
+              className="w-8 h-8 flex items-center justify-center text-stone-500 dark:text-zinc-400 hover:text-stone-800 dark:hover:text-zinc-200 transition-colors rounded-lg"
+              aria-label="More actions"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <circle cx="8" cy="2.5" r="1.5"/>
+                <circle cx="8" cy="8" r="1.5"/>
+                <circle cx="8" cy="13.5" r="1.5"/>
+              </svg>
+            </button>
+            {showHeaderMenu && (
+              <div className="absolute right-0 top-full mt-1 z-50 bg-white dark:bg-zinc-800 border border-stone-200 dark:border-zinc-700 rounded-lg shadow-lg py-1 min-w-[160px]">
+                {hasStoredState && (
+                  <button
+                    onClick={() => { exportBook(book.title, book.author, book); setShowHeaderMenu(false); }}
+                    className="w-full text-left px-3 py-2 text-sm text-stone-700 dark:text-zinc-300 hover:bg-stone-100 dark:hover:bg-zinc-700"
+                  >
+                    Export
+                  </button>
+                )}
+                {hasStoredState && stored.lastAnalyzedIndex >= 0 && (
+                  <button
+                    onClick={() => { handleShare(); setShowHeaderMenu(false); }}
+                    className="w-full text-left px-3 py-2 text-sm text-stone-700 dark:text-zinc-300 hover:bg-stone-100 dark:hover:bg-zinc-700"
+                  >
+                    {shareLabel}
+                  </button>
+                )}
+                <button
+                  onClick={() => { setShowSettings(true); setShowHeaderMenu(false); }}
+                  className="w-full text-left px-3 py-2 text-sm text-stone-700 dark:text-zinc-300 hover:bg-stone-100 dark:hover:bg-zinc-700"
+                >
+                  AI Settings
+                </button>
+                <button
+                  onClick={() => { toggleTheme(); setShowHeaderMenu(false); }}
+                  className="w-full text-left px-3 py-2 text-sm text-stone-700 dark:text-zinc-300 hover:bg-stone-100 dark:hover:bg-zinc-700"
+                >
+                  {isDark ? 'Light mode' : 'Dark mode'}
+                </button>
+                <button
+                  onClick={() => { setBook(null); setResult(null); storedRef.current = null; seriesBaseRef.current = null; setShowHeaderMenu(false); }}
+                  className="w-full text-left px-3 py-2 text-sm text-stone-700 dark:text-zinc-300 hover:bg-stone-100 dark:hover:bg-zinc-700"
+                >
+                  Change book
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -2230,6 +2297,7 @@ export default function Home() {
                               currentResult={result}
                               onResultEdit={applyResultEdit}
                               currentChapterIndex={currentChapterIndex}
+                              onChapterJump={handleChapterChange}
                             />
                           ))}
                         </div>

@@ -112,9 +112,10 @@ interface Props {
   onClose: () => void;
   currentChapterIndex?: number;
   onEntityClick?: (type: 'character' | 'location' | 'arc', name: string) => void;
+  onChapterJump?: (index: number) => void;
 }
 
-export default function CharacterModal({ character, snapshots, chapterTitles, currentResult, onResultEdit, onClose, currentChapterIndex, onEntityClick }: Props) {
+export default function CharacterModal({ character, snapshots, chapterTitles, currentResult, onResultEdit, onClose, currentChapterIndex, onEntityClick, onChapterJump }: Props) {
   const [tab, setTab] = useState<'overview' | 'timeline'>('overview');
   const [mode, setMode] = useState<EditMode>('view');
   const [draft, setDraft] = useState<DraftCharacter>(() => charToDraft(character));
@@ -138,12 +139,29 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
     const matchesCharacter = (c: { name: string; aliases?: string[] }) =>
       [c.name, ...(c.aliases ?? [])].some((n) => charNameSet.has(n.toLowerCase().trim()));
 
-    for (const snap of sorted) {
+    for (let si = 0; si < sorted.length; si++) {
+      const snap = sorted[si];
       const ch = snap.result.characters.find(matchesCharacter);
       if (!ch?.recentEvents || ch.recentEvents === lastEvents) continue;
+      const prevEvents = lastEvents;
       lastEvents = ch.recentEvents;
+
+      // Compare against previous snapshot to filter stale mentions
+      const prevSnap = si > 0 ? sorted[si - 1] : undefined;
+      const prevCharMap = new Map(
+        (prevSnap?.result.characters ?? []).map((c) => [c.name, c]),
+      );
+
       const interactions = snap.result.characters
-        .filter((c) => !matchesCharacter(c) && mentionedIn(ch.recentEvents, c))
+        .filter((c) => {
+          if (matchesCharacter(c)) return false;
+          if (!mentionedIn(ch.recentEvents, c)) return false;
+          // Newly mentioned — wasn't in previous recentEvents
+          if (!prevEvents || !mentionedIn(prevEvents, c)) return true;
+          // Previously mentioned but their own state changed — still active
+          const prev = prevCharMap.get(c.name);
+          return !prev || prev.lastSeen !== c.lastSeen || prev.recentEvents !== c.recentEvents;
+        })
         .map((c) => c.name);
       entries.push({
         chapterIndex: snap.index,
@@ -493,11 +511,11 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
 
         {/* Panel */}
         <div
-          className="relative z-10 w-full max-w-lg max-h-[85vh] overflow-y-auto bg-white dark:bg-zinc-900 rounded-2xl border border-stone-200 dark:border-zinc-800 shadow-2xl"
+          className="relative z-10 w-full max-w-lg max-h-[85vh] max-h-[85dvh] flex flex-col bg-white dark:bg-zinc-900 rounded-2xl border border-stone-200 dark:border-zinc-800 shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="p-6 border-b border-stone-200 dark:border-zinc-800 pb-0">
+          <div className="flex-shrink-0 p-6 border-b border-stone-200 dark:border-zinc-800 pb-0">
             <div className="flex items-start gap-4">
               <div className={`flex-shrink-0 w-14 h-14 rounded-xl flex items-center justify-center text-lg font-bold ${nameColor(character.name)}`}>
                 {initials(character.name)}
@@ -572,7 +590,7 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
             )}
           </div>
 
-          <div className="p-6 space-y-5">
+          <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-5">
             {mode === 'edit' && renderEditForm()}
             {mode === 'split' && renderSplitForm()}
             {mode === 'delete' && renderDeleteConfirm()}
@@ -588,11 +606,32 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
                 <section className="grid grid-cols-2 gap-3">
                   <div className="p-3 bg-stone-100/50 dark:bg-zinc-800/50 rounded-lg border border-stone-200 dark:border-zinc-800">
                     <p className="text-[10px] font-semibold text-stone-400 dark:text-zinc-600 uppercase tracking-wider mb-1">Current location</p>
-                    <p className="text-sm text-stone-700 dark:text-zinc-300">{character.currentLocation || 'Unknown'}</p>
+                    {character.currentLocation && character.currentLocation !== 'Unknown' && onEntityClick ? (
+                      <button
+                        onClick={() => onEntityClick('location', character.currentLocation)}
+                        className="text-sm text-stone-700 dark:text-zinc-300 hover:text-sky-500 dark:hover:text-sky-400 hover:underline transition-colors text-left"
+                      >
+                        {character.currentLocation}
+                      </button>
+                    ) : (
+                      <p className="text-sm text-stone-700 dark:text-zinc-300">{character.currentLocation || 'Unknown'}</p>
+                    )}
                   </div>
                   <div className="p-3 bg-stone-100/50 dark:bg-zinc-800/50 rounded-lg border border-stone-200 dark:border-zinc-800">
                     <p className="text-[10px] font-semibold text-stone-400 dark:text-zinc-600 uppercase tracking-wider mb-1">Last seen</p>
-                    <p className="text-sm text-stone-700 dark:text-zinc-300">{character.lastSeen || '—'}</p>
+                    {(() => {
+                      const idx = chapterTitles?.findIndex((t) => t === character.lastSeen);
+                      return idx != null && idx >= 0 && onChapterJump ? (
+                        <button
+                          onClick={() => onChapterJump(idx)}
+                          className="text-sm text-stone-700 dark:text-zinc-300 hover:text-sky-500 dark:hover:text-sky-400 hover:underline transition-colors text-left"
+                        >
+                          {character.lastSeen}
+                        </button>
+                      ) : (
+                        <p className="text-sm text-stone-700 dark:text-zinc-300">{character.lastSeen || '—'}</p>
+                      );
+                    })()}
                   </div>
                 </section>
                 {character.recentEvents && (

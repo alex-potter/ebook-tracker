@@ -46,9 +46,10 @@ interface Props {
   currentResult?: AnalysisResult;
   onResultEdit?: (result: AnalysisResult, propagate?: SnapshotTransform) => void;
   currentChapterIndex?: number;
+  onChapterJump?: (index: number) => void;
 }
 
-export default function CharacterCard({ character, snapshots, chapterTitles, currentResult, onResultEdit, currentChapterIndex }: Props) {
+export default function CharacterCard({ character, snapshots, chapterTitles, currentResult, onResultEdit, currentChapterIndex, onChapterJump }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [navEntity, setNavEntity] = useState<{ type: 'character' | 'location'; name: string } | null>(null);
@@ -64,11 +65,11 @@ export default function CharacterCard({ character, snapshots, chapterTitles, cur
 
   return (
     <>
-      {modalOpen && <CharacterModal character={character} snapshots={snapshots} chapterTitles={chapterTitles} currentResult={currentResult} onResultEdit={onResultEdit} currentChapterIndex={currentChapterIndex} onClose={() => setModalOpen(false)} onEntityClick={handleEntityClick} />}
+      {modalOpen && <CharacterModal character={character} snapshots={snapshots} chapterTitles={chapterTitles} currentResult={currentResult} onResultEdit={onResultEdit} currentChapterIndex={currentChapterIndex} onClose={() => setModalOpen(false)} onEntityClick={handleEntityClick} onChapterJump={onChapterJump} />}
       {navEntity?.type === 'character' && (() => {
         const navChar = currentResult?.characters.find((c) => c.name === navEntity.name);
         return navChar ? (
-          <CharacterModal character={navChar} snapshots={snapshots} chapterTitles={chapterTitles} currentResult={currentResult} onResultEdit={onResultEdit} currentChapterIndex={currentChapterIndex} onClose={() => setNavEntity(null)} onEntityClick={handleEntityClick} />
+          <CharacterModal character={navChar} snapshots={snapshots} chapterTitles={chapterTitles} currentResult={currentResult} onResultEdit={onResultEdit} currentChapterIndex={currentChapterIndex} onClose={() => setNavEntity(null)} onEntityClick={handleEntityClick} onChapterJump={onChapterJump} />
         ) : null;
       })()}
       {navEntity?.type === 'location' && (
@@ -108,9 +109,12 @@ export default function CharacterCard({ character, snapshots, chapterTitles, cur
               {status.label}
             </span>
             {character.currentLocation && character.currentLocation !== 'Unknown' && (
-              <span className="text-xs text-stone-400 dark:text-zinc-500 truncate">
+              <button
+                onClick={(e) => { e.stopPropagation(); handleEntityClick('location', character.currentLocation); }}
+                className="text-xs text-stone-400 dark:text-zinc-500 truncate hover:text-sky-500 dark:hover:text-sky-400 hover:underline transition-colors"
+              >
                 {character.currentLocation}
-              </span>
+              </button>
             )}
           </div>
         </div>
@@ -166,7 +170,20 @@ export default function CharacterCard({ character, snapshots, chapterTitles, cur
       {/* Footer */}
       <div className="px-4 py-2 bg-stone-100/40 dark:bg-zinc-800/40 border-t border-stone-200 dark:border-zinc-800">
         <p className="text-xs text-stone-400 dark:text-zinc-600">
-          Last seen: <span className="text-stone-400 dark:text-zinc-500">{character.lastSeen}</span>
+          Last seen:{' '}
+          {(() => {
+            const idx = chapterTitles?.findIndex((t) => t === character.lastSeen);
+            return idx != null && idx >= 0 && onChapterJump ? (
+              <button
+                onClick={(e) => { e.stopPropagation(); onChapterJump(idx); }}
+                className="text-stone-400 dark:text-zinc-500 hover:text-sky-500 dark:hover:text-sky-400 hover:underline transition-colors"
+              >
+                {character.lastSeen}
+              </button>
+            ) : (
+              <span className="text-stone-400 dark:text-zinc-500">{character.lastSeen}</span>
+            );
+          })()}
         </p>
       </div>
     </div>

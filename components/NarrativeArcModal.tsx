@@ -352,11 +352,11 @@ export default function NarrativeArcModal({ arcName, snapshots, chapterTitles, c
         <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={mode !== 'view' ? () => setMode('view') : undefined} />
 
         <div
-          className="relative z-10 w-full max-w-lg max-h-[85vh] overflow-y-auto bg-white dark:bg-zinc-900 rounded-2xl border border-stone-200 dark:border-zinc-800 shadow-2xl"
+          className="relative z-10 w-full max-w-lg max-h-[85vh] max-h-[85dvh] flex flex-col bg-white dark:bg-zinc-900 rounded-2xl border border-stone-200 dark:border-zinc-800 shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="p-6 border-b border-stone-200 dark:border-zinc-800 pb-0">
+          <div className="flex-shrink-0 p-6 border-b border-stone-200 dark:border-zinc-800 pb-0">
             <div className="flex items-start gap-4">
               <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-stone-100 dark:bg-zinc-800 flex items-center justify-center text-2xl">
                 🎭
@@ -434,7 +434,7 @@ export default function NarrativeArcModal({ arcName, snapshots, chapterTitles, c
             )}
           </div>
 
-          <div className="p-6 space-y-5">
+          <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-5">
             {mode === 'edit' && renderEditForm()}
             {mode === 'split' && renderSplitForm()}
             {mode === 'delete' && renderDeleteConfirm()}
