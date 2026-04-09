@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseEpub } from '@/lib/epub-parser';
-import type { AnalysisResult, BookBuddyExport, BookMeta, Character, MapState, NarrativeArc, ParentArc, ParsedEbook, PinUpdates, QueueJob, SavedBookEntry, Snapshot, StoredBookState } from '@/types';
+import type { AnalysisResult, BookBuddyExport, BookFilter, BookMeta, ChapterEvent, Character, MapState, NarrativeArc, ParentArc, ParsedEbook, PinUpdates, QueueJob, ReadingPosition, SavedBookEntry, SeriesDefinition, Snapshot, StoredBookState } from '@/types';
 import CalibreLibrary from '@/components/CalibreLibrary';
 import CharacterCard from '@/components/CharacterCard';
 import ChapterSelector from '@/components/ChapterSelector';
@@ -25,7 +25,16 @@ import StoryTimeline from '@/components/StoryTimeline';
 import WelcomeBanner from '@/components/WelcomeBanner';
 import LibrarySubmitModal from '@/components/LibrarySubmitModal';
 import BookmarkModal from '@/components/BookmarkModal';
+import BookStructureEditor from '@/components/BookStructureEditor';
+import BookFilterSelector from '@/components/BookFilterSelector';
 import { useDerivedEntities } from '@/lib/use-derived-entities';
+import { buildInitialSeriesDefinition, migrateToSeriesDefinition, getActiveParentArcs, getStaleBooks, computeArcGroupingHash } from '@/lib/series';
+import { generateParentArcs, generateSeriesArcs } from '@/lib/generate-arcs';
+import SearchFAB from '@/components/SearchFAB';
+import SearchSheet from '@/components/SearchSheet';
+import CharacterModal from '@/components/CharacterModal';
+import LocationModal from '@/components/LocationModal';
+import NarrativeArcModal from '@/components/NarrativeArcModal';
 
 type SortKey = 'importance' | 'name' | 'status';
 type MainTab = 'characters' | 'locations' | 'map' | 'arcs' | 'manage';
@@ -57,9 +66,9 @@ function bestSnapshot(snapshots: Snapshot[], targetIndex: number): Snapshot | nu
 }
 
 /** Add/replace a snapshot for this index */
-function upsertSnapshot(snapshots: Snapshot[], index: number, result: AnalysisResult, model?: string, appVersion?: string): Snapshot[] {
+function upsertSnapshot(snapshots: Snapshot[], index: number, result: AnalysisResult, model?: string, appVersion?: string, events?: ChapterEvent[]): Snapshot[] {
   const without = snapshots.filter((s) => s.index !== index);
-  return [...without, { index, result, ...(model ? { model } : {}), ...(appVersion ? { appVersion } : {}) }];
+  return [...without, { index, result, ...(model ? { model } : {}), ...(appVersion ? { appVersion } : {}), ...(events?.length ? { events } : {}) }];
 }
 
 const IS_MOBILE = process.env.NEXT_PUBLIC_MOBILE === 'true';
@@ -96,7 +105,7 @@ async function analyzeChapter(
   chapter: { title: string; text: string },
   previousResult: AnalysisResult | null,
   allChapterTitles?: string[],
-): Promise<{ result: AnalysisResult; model: string; rateLimitWaitMs?: number }> {
+): Promise<{ result: AnalysisResult; model: string; rateLimitWaitMs?: number; events?: ChapterEvent[] }> {
   if (IS_MOBILE) {
     const { analyzeChapterClient } = await import('@/lib/ai-client');
     const result = await analyzeChapterClient(bookTitle, bookAuthor, chapter, previousResult);
@@ -127,10 +136,10 @@ async function analyzeChapter(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const data = await res.json() as AnalysisResult & { _model?: string; _rateLimitWaitMs?: number };
+  const data = await res.json() as AnalysisResult & { _model?: string; _rateLimitWaitMs?: number; _events?: ChapterEvent[] };
   if (!res.ok) throw new Error((data as unknown as { error?: string }).error ?? 'Analysis failed.');
-  const { _model, _rateLimitWaitMs, ...result } = data;
-  return { result: result as AnalysisResult, model: _model ?? 'unknown', rateLimitWaitMs: _rateLimitWaitMs };
+  const { _model, _rateLimitWaitMs, _events, ...result } = data;
+  return { result: result as AnalysisResult, model: _model ?? 'unknown', rateLimitWaitMs: _rateLimitWaitMs, events: _events };
 }
 
 async function reconcileResult(
@@ -171,37 +180,7 @@ async function reconcileResult(
   return data as AnalysisResult;
 }
 
-async function generateParentArcs(
-  bookTitle: string,
-  bookAuthor: string,
-  arcs: NarrativeArc[],
-): Promise<ParentArc[]> {
-  if (!arcs?.length) return [];
-
-  let aiSettings: Record<string, string> = {};
-  try {
-    const { loadAiSettings } = await import('@/lib/ai-client');
-    const s = loadAiSettings();
-    if (s.provider) aiSettings._provider = s.provider;
-    if (s.anthropicKey) aiSettings._apiKey = s.anthropicKey;
-    if (s.ollamaUrl) aiSettings._ollamaUrl = s.ollamaUrl;
-    if (s.model) aiSettings._model = s.model;
-    if (s.geminiKey) aiSettings._geminiKey = s.geminiKey;
-    if (s.openaiCompatibleUrl) aiSettings._openaiCompatibleUrl = s.openaiCompatibleUrl;
-    if (s.openaiCompatibleKey) aiSettings._openaiCompatibleKey = s.openaiCompatibleKey;
-  } catch { /* ignore */ }
-
-  const res = await fetch('/api/group-arcs', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ bookTitle, bookAuthor, arcs, ...aiSettings }),
-  });
-  if (!res.ok) throw new Error('Failed to group arcs');
-  const data = await res.json() as { parentArcs: ParentArc[] };
-  return data.parentArcs;
-}
-
-/** Fire parent arc grouping if the book is fully analyzed. Returns the (possibly updated) stored state. */
+/** Fire parent arc grouping if the book (or a specific book within a series) is fully analyzed. */
 async function maybeGenerateParentArcs(
   stored: StoredBookState,
   bookTitle: string,
@@ -212,6 +191,64 @@ async function maybeGenerateParentArcs(
   if (cancelled) return stored;
   if (stored.lastAnalyzedIndex < rangeEnd) return stored;
   if (!stored.result.arcs?.length) return stored;
+
+  // If we have a series, do per-book grouping
+  if (stored.series && stored.series.books.length > 1) {
+    let series = { ...stored.series, books: [...stored.series.books] };
+    let anyBookGrouped = false;
+
+    for (let bi = 0; bi < series.books.length; bi++) {
+      const bookDef = series.books[bi];
+      // Check if all chapters in this book are analyzed
+      const bookEnd = bookDef.chapterEnd;
+      if (stored.lastAnalyzedIndex < bookEnd) continue;
+      // Skip if already grouped and not stale
+      const currentHash = computeArcGroupingHash(bookDef);
+      if (bookDef.arcGroupingHash === currentHash && bookDef.parentArcs?.length) continue;
+
+      // Gather arcs from snapshots within this book's range
+      const bookSnapshots = stored.snapshots.filter(
+        (s) => s.index >= bookDef.chapterStart && s.index <= bookDef.chapterEnd
+          && !bookDef.excludedChapters.includes(s.index),
+      );
+      const lastSnap = bookSnapshots.sort((a, b) => b.index - a.index)[0];
+      const bookArcs = lastSnap?.result.arcs ?? [];
+      if (!bookArcs.length) continue;
+
+      try {
+        const parentArcs = await generateParentArcs(bookTitle, bookAuthor, bookArcs);
+        series.books[bi] = {
+          ...bookDef,
+          parentArcs,
+          arcGroupingHash: currentHash,
+        };
+        anyBookGrouped = true;
+      } catch (e) {
+        console.warn(`[parent-arcs] Per-book generation failed for "${bookDef.title}":`, e);
+      }
+    }
+
+    let result = { ...stored, series };
+
+    // If all books have per-book arcs, generate series-level arcs
+    if (anyBookGrouped) {
+      const booksWithArcs = series.books
+        .filter((b) => b.parentArcs?.length)
+        .map((b) => ({ bookTitle: b.title, parentArcs: b.parentArcs! }));
+      if (booksWithArcs.length >= 2) {
+        try {
+          const seriesArcs = await generateSeriesArcs(bookTitle, bookAuthor, booksWithArcs);
+          result = { ...result, series: { ...result.series!, seriesArcs } };
+        } catch (e) {
+          console.warn('[parent-arcs] Series-level generation failed:', e);
+        }
+      }
+    }
+
+    return result;
+  }
+
+  // Non-series fallback: original behavior
   try {
     const parentArcs = await generateParentArcs(bookTitle, bookAuthor, stored.result.arcs);
     return { ...stored, parentArcs };
@@ -392,8 +429,6 @@ export default function Home() {
   // Stable ref to the active book so the queue processor doesn't capture a stale closure
   const bookRef = useRef<ParsedEbook | null>(null);
 
-  const [excludedBooks, setExcludedBooks] = useState<Set<number>>(new Set());
-  const [excludedChapters, setExcludedChapters] = useState<Set<number>>(new Set());
   const [chapterRange, setChapterRangeState] = useState<{ start: number; end: number } | null>(null);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [mapState, setMapState] = useState<MapState | null>(null);
@@ -435,32 +470,6 @@ export default function Home() {
     URL.revokeObjectURL(url);
   }
 
-  function toggleBook(bookIndex: number) {
-    setExcludedBooks((prev) => {
-      const next = new Set(prev);
-      if (next.has(bookIndex)) next.delete(bookIndex); else next.add(bookIndex);
-      if (book && storedRef.current) {
-        const updated = { ...storedRef.current, excludedBooks: [...next] };
-        storedRef.current = updated;
-        persistState(book.title, book.author, updated);
-      }
-      return next;
-    });
-  }
-
-  function toggleChapter(chapterIndex: number) {
-    setExcludedChapters((prev) => {
-      const next = new Set(prev);
-      if (next.has(chapterIndex)) next.delete(chapterIndex); else next.add(chapterIndex);
-      if (book && storedRef.current) {
-        const updated = { ...storedRef.current, excludedChapters: [...next] };
-        storedRef.current = updated;
-        persistState(book.title, book.author, updated);
-      }
-      return next;
-    });
-  }
-
   function setChapterRange(range: { start: number; end: number } | null) {
     setChapterRangeState(range);
     if (book && storedRef.current) {
@@ -480,8 +489,9 @@ export default function Home() {
     storedRef.current = updated;
     persistState(book.title, book.author, updated);
 
-    // Load the appropriate snapshot for the new bookmark position
+    // Navigate to the bookmarked chapter
     const bookmark = index ?? stored.lastAnalyzedIndex;
+    setCurrentIndex(bookmark);
     setSpoilerDismissedIndex(null);
     if (bookmark >= stored.lastAnalyzedIndex) {
       setResult(stored.result);
@@ -495,12 +505,118 @@ export default function Home() {
     }
   }
 
+  function handleSetReadingPosition(position: ReadingPosition) {
+    if (!book || !storedRef.current) return;
+    const stored = storedRef.current;
+    const updated: StoredBookState = { ...stored, readingPosition: position, readingBookmark: position.chapterIndex };
+    persistState(book.title, book.author, updated);
+    storedRef.current = updated;
+    setCurrentIndex(position.chapterIndex);
+    const snap = bestSnapshot(updated.snapshots, position.chapterIndex);
+    if (snap) setResult(snap.result);
+  }
+
   function handleUpdateParentArcs(parentArcs: ParentArc[]) {
     if (!book || !storedRef.current) return;
-    const updated = { ...storedRef.current, parentArcs: parentArcs.length > 0 ? parentArcs : undefined };
+    const stored = storedRef.current;
+
+    if (stored.series && bookFilter.mode === 'books' && bookFilter.indices.length === 1) {
+      // Save to the specific book's parentArcs
+      const bookIndex = bookFilter.indices[0];
+      const updatedBooks = stored.series.books.map((b) =>
+        b.index === bookIndex ? { ...b, parentArcs: parentArcs.length > 0 ? parentArcs : undefined } : b,
+      );
+      const updated = { ...stored, series: { ...stored.series, books: updatedBooks } };
+      storedRef.current = updated;
+      persistState(book.title, book.author, updated);
+    } else if (stored.series && bookFilter.mode === 'all') {
+      // Save to series-level arcs
+      const updated = { ...stored, series: { ...stored.series, seriesArcs: parentArcs.length > 0 ? parentArcs : undefined } };
+      storedRef.current = updated;
+      persistState(book.title, book.author, updated);
+    } else {
+      // Non-series fallback
+      const updated = { ...stored, parentArcs: parentArcs.length > 0 ? parentArcs : undefined };
+      storedRef.current = updated;
+      persistState(book.title, book.author, updated);
+    }
+    setParentArcsRev((r) => r + 1);
+  }
+
+  function handleSaveSeries(updatedSeries: SeriesDefinition) {
+    if (!book || !storedRef.current) return;
+    const updated = { ...storedRef.current, series: updatedSeries };
     storedRef.current = updated;
     persistState(book.title, book.author, updated);
-    setParentArcsRev((r) => r + 1);
+    setShowBookStructureEditor(false);
+  }
+
+  async function handleReextractTitles(
+    chapterOrders: number[],
+  ): Promise<Map<number, { title: string; preview?: string }>> {
+    if (!book) return new Map();
+
+    const { loadChapters } = await import('@/lib/chapter-storage');
+    const { extractExtendedHeading, extractText, extractPreview } = await import('@/lib/epub-parser');
+
+    const entries = await loadChapters(book.title, book.author);
+    if (!entries) return new Map();
+
+    const orderToId = new Map<number, string>();
+    if (storedRef.current?.bookMeta) {
+      for (const ch of storedRef.current.bookMeta.chapters) {
+        orderToId.set(ch.order, ch.id);
+      }
+    }
+
+    const result = new Map<number, { title: string; preview?: string }>();
+    for (const order of chapterOrders) {
+      const id = orderToId.get(order);
+      if (!id) continue;
+      const entry = entries.find((e) => e.id === id);
+      if (!entry) continue;
+
+      let newTitle: string | undefined;
+
+      // Try re-extraction from stored HTML head
+      if (entry.htmlHead) {
+        const headingMatch = entry.htmlHead.match(/<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/i);
+        const rawTitle = headingMatch?.[1] ? extractText(headingMatch[1]) : '';
+        if (rawTitle.trim()) {
+          newTitle = rawTitle.trim();
+        } else {
+          const extended = extractExtendedHeading(entry.htmlHead);
+          if (extended) newTitle = extended;
+        }
+      }
+
+      // Fallback: use first line of plain text only if it looks title-like (short, no sentence punctuation)
+      if (!newTitle) {
+        const firstLine = entry.text.split('\n').find((l) => l.trim().length > 0)?.trim();
+        if (firstLine && firstLine.length < 60 && !/[.!?,;]/.test(firstLine)) {
+          newTitle = firstLine;
+        }
+      }
+
+      if (newTitle) {
+        const preview = extractPreview(entry.text);
+        result.set(order, { title: newTitle, preview: preview || undefined });
+      }
+    }
+
+    // Update bookMeta with new titles
+    if (result.size > 0 && storedRef.current?.bookMeta) {
+      const updatedChapters = storedRef.current.bookMeta.chapters.map((ch) => {
+        const update = result.get(ch.order);
+        if (!update) return ch;
+        return { ...ch, title: update.title, preview: update.preview ?? ch.preview };
+      });
+      const updatedMeta = { ...storedRef.current.bookMeta, chapters: updatedChapters };
+      storedRef.current = { ...storedRef.current, bookMeta: updatedMeta };
+      persistState(book.title, book.author, storedRef.current);
+    }
+
+    return result;
   }
 
   function completeSetup(range: { start: number; end: number }) {
@@ -518,6 +634,11 @@ export default function Home() {
   const [playSpeed, setPlaySpeed] = useState(2000); // ms per step
   const [showBookmarkModal, setShowBookmarkModal] = useState(false);
   const [bookmarkModalMode, setBookmarkModalMode] = useState<'import' | 'update'>('update');
+  const [showBookStructureEditor, setShowBookStructureEditor] = useState(false);
+  const [bookStructureMode, setBookStructureMode] = useState<'setup' | 'manage'>('setup');
+  const [bookFilter, setBookFilter] = useState<BookFilter>({ mode: 'all' });
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchEntity, setSearchEntity] = useState<{ type: 'character' | 'location' | 'arc'; name: string } | null>(null);
   const playIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Drive playback: advance one snapshot per interval tick
@@ -569,6 +690,54 @@ export default function Home() {
   const seriesBaseRef = useRef<AnalysisResult | null>(null);
   const mapStateRef = useRef<MapState | null>(null);
   useEffect(() => { mapStateRef.current = mapState; }, [mapState]);
+
+  const visibleChapterOrders = useMemo(() => {
+    const series = storedRef.current?.series;
+    if (!series) return null;
+    const targetBooks = bookFilter.mode === 'all'
+      ? series.books
+      : series.books.filter((b) => bookFilter.indices.includes(b.index));
+    const visible = new Set<number>();
+    for (const b of targetBooks) {
+      if (b.excluded) continue;
+      for (let o = b.chapterStart; o <= b.chapterEnd; o++) {
+        if (!b.excludedChapters.includes(o)) visible.add(o);
+      }
+    }
+    return visible;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storedRef.current?.series, bookFilter]);
+
+  const visibleSnapshots = useMemo(() => {
+    const snaps = storedRef.current?.snapshots ?? [];
+    if (!visibleChapterOrders) return snaps;
+    return snaps.filter((s) => visibleChapterOrders.has(s.index));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storedRef.current?.snapshots, visibleChapterOrders]);
+
+  // Auto-navigate when current chapter falls outside visible set
+  useEffect(() => {
+    if (!visibleChapterOrders || visibleChapterOrders.size === 0 || visibleChapterOrders.has(currentIndex)) return;
+    const stored = storedRef.current;
+    if (stored?.snapshots?.length) {
+      const visibleSnaps = stored.snapshots
+        .filter((s) => visibleChapterOrders.has(s.index))
+        .sort((a, b) => b.index - a.index);
+      if (visibleSnaps.length > 0) {
+        const target = visibleSnaps[0];
+        setCurrentIndex(target.index);
+        setResult(target.result);
+        setViewingSnapshotIndex(target.index);
+        return;
+      }
+    }
+    setCurrentIndex(Math.min(...visibleChapterOrders));
+  }, [visibleChapterOrders, currentIndex]);
+
+  const handleSearchEntitySelect = useCallback((type: 'character' | 'location' | 'arc', name: string) => {
+    setShowSearch(false);
+    setSearchEntity({ type, name });
+  }, []);
 
   const applyResultEdit = useCallback((
     updatedResult: AnalysisResult,
@@ -626,6 +795,46 @@ export default function Home() {
         // Remove empty parents
         parentArcs = parentArcs.filter((pa) => pa.children.length > 0);
         updated = { ...updated, parentArcs: parentArcs.length > 0 ? parentArcs : undefined };
+      }
+
+      // Also sync per-book parentArcs in series
+      if (updated.series) {
+        const oldArcNamesS = new Set((cur.result.arcs ?? []).map((a) => a.name));
+        const newArcNamesS = new Set((newResult.arcs ?? []).map((a) => a.name));
+        const removedS = [...oldArcNamesS].filter((n) => !newArcNamesS.has(n));
+        const addedS = [...newArcNamesS].filter((n) => !oldArcNamesS.has(n));
+
+        const syncedBooks = updated.series.books.map((b) => {
+          if (!b.parentArcs?.length) return b;
+          let bookParentArcs: ParentArc[];
+          if (removedS.length === 1 && addedS.length === 1) {
+            bookParentArcs = b.parentArcs.map((pa) => ({
+              ...pa,
+              children: pa.children.map((c) => c === removedS[0] ? addedS[0] : c),
+            }));
+          } else {
+            bookParentArcs = b.parentArcs.map((pa) => ({
+              ...pa,
+              children: pa.children.filter((c) => !removedS.includes(c)),
+            }));
+            if (addedS.length > 0 && removedS.length === 0) {
+              const newArcs = (newResult.arcs ?? []).filter((a) => addedS.includes(a.name));
+              for (const na of newArcs) {
+                const placed = bookParentArcs.find((pa) =>
+                  pa.children.some((c) => {
+                    const existing = (newResult.arcs ?? []).find((a) => a.name === c);
+                    return existing?.characters.some((ch) => na.characters.includes(ch));
+                  })
+                );
+                if (placed) placed.children.push(na.name);
+                else bookParentArcs[bookParentArcs.length - 1]?.children.push(na.name);
+              }
+            }
+          }
+          bookParentArcs = bookParentArcs.filter((pa) => pa.children.length > 0);
+          return { ...b, parentArcs: bookParentArcs.length > 0 ? bookParentArcs : undefined };
+        });
+        updated = { ...updated, series: { ...updated.series, books: syncedBooks } };
       }
 
       storedRef.current = updated;
@@ -689,8 +898,17 @@ export default function Home() {
 
         let accumulated: AnalysisResult | null = stored.lastAnalyzedIndex >= 0 ? stored.result : null;
         let snapshots = [...(stored.snapshots ?? [])];
-        const excludedBookSet = new Set(stored.excludedBooks ?? []);
-        const excludedChapterSet = new Set(stored.excludedChapters ?? []);
+        const seriesExcluded = new Set<number>();
+        if (stored.series) {
+          for (const b of stored.series.books) {
+            if (b.excluded) {
+              for (let o = b.chapterStart; o <= b.chapterEnd; o++) seriesExcluded.add(o);
+            } else {
+              for (const ex of b.excludedChapters) seriesExcluded.add(ex);
+            }
+          }
+          for (const uo of stored.series.unassignedChapters) seriesExcluded.add(uo);
+        }
         let latestStored: StoredBookState = { ...stored };
         let recentText = '';
         const MAX_RECENT_TEXT = 30_000;
@@ -705,24 +923,37 @@ export default function Home() {
             : j));
 
           const ch = chapters[i];
-          if (ch.bookIndex !== undefined && excludedBookSet.has(ch.bookIndex)) continue;
-          if (excludedChapterSet.has(i) || isFrontMatter(ch)) {
-            if (accumulated) {
-              snapshots = upsertSnapshot(snapshots, i, accumulated);
-              latestStored = { ...latestStored, lastAnalyzedIndex: i, result: accumulated, snapshots };
-              persistState(title, author, latestStored);
-              if (bookRef.current?.title === title && bookRef.current?.author === author) {
-                storedRef.current = latestStored;
+          if (stored.series) {
+            if (seriesExcluded.has(i)) {
+              if (accumulated) {
+                snapshots = upsertSnapshot(snapshots, i, accumulated);
+                latestStored = { ...latestStored, lastAnalyzedIndex: i, result: accumulated, snapshots };
+                persistState(title, author, latestStored);
+                if (bookRef.current?.title === title && bookRef.current?.author === author) {
+                  storedRef.current = latestStored;
+                }
               }
+              continue;
             }
-            continue;
+          } else {
+            if (isFrontMatter(ch)) {
+              if (accumulated) {
+                snapshots = upsertSnapshot(snapshots, i, accumulated);
+                latestStored = { ...latestStored, lastAnalyzedIndex: i, result: accumulated, snapshots };
+                persistState(title, author, latestStored);
+                if (bookRef.current?.title === title && bookRef.current?.author === author) {
+                  storedRef.current = latestStored;
+                }
+              }
+              continue;
+            }
           }
 
-          const { result: chResult, model: chModel } = await analyzeChapter(title, author, { title: ch.title, text: ch.text }, accumulated, chapters.map((c) => c.title));
+          const { result: chResult, model: chModel, events: chEvents } = await analyzeChapter(title, author, { title: ch.title, text: ch.text }, accumulated, chapters.map((c) => c.title));
           accumulated = chResult;
           recentText += `\n=== ${ch.title} ===\n${ch.text}`;
           if (recentText.length > MAX_RECENT_TEXT) recentText = recentText.slice(-MAX_RECENT_TEXT);
-          snapshots = upsertSnapshot(snapshots, i, accumulated, chModel, APP_VERSION);
+          snapshots = upsertSnapshot(snapshots, i, accumulated, chModel, APP_VERSION, chEvents);
           latestStored = { ...latestStored, lastAnalyzedIndex: i, result: accumulated, snapshots };
           persistState(title, author, latestStored);
 
@@ -801,25 +1032,47 @@ export default function Home() {
 
   function activateBook(parsed: ParsedEbook, initialStored: StoredBookState | null, initialMapState?: MapState | null) {
     const bookMeta: BookMeta = {
-      chapters: parsed.chapters.map(({ id, title, order, bookIndex, bookTitle }) => ({ id, title, order, bookIndex, bookTitle })),
+      chapters: parsed.chapters.map(({ id, title, order, bookIndex, bookTitle, preview, contentType }) =>
+        ({ id, title, order, bookIndex, bookTitle, preview, contentType })),
       books: parsed.books,
     };
-    const stateToSave: StoredBookState = initialStored
+    let stateToSave: StoredBookState = initialStored
       ? { ...initialStored, bookMeta }
       : { lastAnalyzedIndex: -2, result: { characters: [], summary: '' }, snapshots: [], bookMeta };
+
+    // Build or migrate series definition
+    if (!stateToSave.series && bookMeta.books && bookMeta.books.length >= 2) {
+      if (initialStored?.excludedBooks || initialStored?.bookMeta) {
+        // Migrate from legacy fields
+        const series = migrateToSeriesDefinition(bookMeta, initialStored?.excludedBooks);
+        if (series) stateToSave = { ...stateToSave, series };
+      } else {
+        // Fresh book — build from parser output
+        const chapterTexts = new Map<number, { title: string; text: string }>();
+        for (const ch of parsed.chapters) {
+          chapterTexts.set(ch.order, { title: ch.title, text: ch.text });
+        }
+        const series = buildInitialSeriesDefinition(bookMeta, detectChapterRange, chapterTexts);
+        if (series) stateToSave = { ...stateToSave, series };
+      }
+    }
+
     storedRef.current = stateToSave;
     persistState(parsed.title, parsed.author, stateToSave);
     // Persist chapter texts in IndexedDB so re-upload is not required next session
-    const chaptersWithText = parsed.chapters.filter((ch) => ch.text).map(({ id, text }) => ({ id, text }));
+    const chaptersWithText = parsed.chapters.filter((ch) => ch.text).map((ch) => ({
+      id: ch.id,
+      text: ch.text,
+      htmlHead: (ch as unknown as Record<string, string>)._htmlHead,
+    }));
     if (chaptersWithText.length > 0) {
       saveChapters(parsed.title, parsed.author, chaptersWithText).catch(() => {});
     }
     seriesBaseRef.current = initialStored?.lastAnalyzedIndex === -1 ? initialStored.result : null;
-    setExcludedBooks(initialStored?.excludedBooks ? new Set(initialStored.excludedBooks) : new Set());
-    setExcludedChapters(initialStored?.excludedChapters ? new Set(initialStored.excludedChapters) : new Set());
     setChapterRangeState(initialStored?.chapterRange ?? null);
     setMapState(initialMapState ?? null);
     setBook(parsed);
+    setBookFilter({ mode: 'all' });
     if (initialStored && initialStored.lastAnalyzedIndex >= 0) {
       const bookmark = initialStored.readingBookmark;
       if (bookmark != null && bookmark < initialStored.lastAnalyzedIndex) {
@@ -853,11 +1106,28 @@ export default function Home() {
     } else {
       setNeedsSetup(false);
     }
+
+    // Show book structure editor for multi-book EPUBs with unconfirmed structure
+    if (stateToSave.series && stateToSave.series.books.some((b) => !b.confirmed)) {
+      setBookStructureMode('setup');
+      setShowBookStructureEditor(true);
+    }
   }
 
   async function loadBookFromMeta(title: string, author: string) {
-    const stored = await loadBookState(title, author);
+    let stored = await loadBookState(title, author);
     if (!stored) return;
+
+    // Migrate legacy state to series definition if needed
+    if (!stored.series && stored.bookMeta?.books && stored.bookMeta.books.length >= 2) {
+      const series = migrateToSeriesDefinition(stored.bookMeta, stored.excludedBooks);
+      if (series) {
+        stored = { ...stored, series };
+        // Persist migrated state
+        persistState(title, author, stored);
+      }
+    }
+
     // Try to restore chapter texts from IndexedDB
     let textMap: Map<string, string> | null = null;
     try {
@@ -984,15 +1254,14 @@ export default function Home() {
     activateBook(pendingBook, null);
   }
 
-  /** Indices of chapters in [from, to] that are neither excluded nor front-matter. */
   function analyzableIndices(from: number, to: number): number[] {
     if (!book) return [];
     const result: number[] = [];
     for (let i = from; i <= to; i++) {
       const ch = book.chapters[i];
       if (!ch) continue;
-      if (ch.bookIndex !== undefined && excludedBooks.has(ch.bookIndex)) continue;
-      if (excludedChapters.has(i) || isFrontMatter(ch)) continue;
+      if (visibleChapterOrders && !visibleChapterOrders.has(i)) continue;
+      if (!visibleChapterOrders && isFrontMatter(ch)) continue;
       result.push(i);
     }
     return result;
@@ -1040,12 +1309,12 @@ export default function Home() {
         const i = toAnalyze[step];
         const ch = book.chapters[i];
         setRebuildProgress({ current: step + 1, total, chapterTitle: ch.title, chapterIndex: i });
-        const { result: chapterResult, model: chapterModel, rateLimitWaitMs } = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated, book.chapters.map((c) => c.title));
+        const { result: chapterResult, model: chapterModel, rateLimitWaitMs, events: chapterEvents } = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated, book.chapters.map((c) => c.title));
         if (rateLimitWaitMs) {
           setRebuildProgress((prev) => prev ? { ...prev, chapterTitle: `${ch.title} (rate limit: waited ${Math.ceil(rateLimitWaitMs / 1000)}s)` } : prev);
         }
         accumulated = chapterResult;
-        snapshots = upsertSnapshot(snapshots, i, accumulated, chapterModel, APP_VERSION);
+        snapshots = upsertSnapshot(snapshots, i, accumulated, chapterModel, APP_VERSION, chapterEvents);
         const partial: StoredBookState = { ...analyzeBase, lastAnalyzedIndex: i, result: accumulated, snapshots };
         storedRef.current = partial;
         persistState(book.title, book.author, partial);
@@ -1065,7 +1334,7 @@ export default function Home() {
       setRebuildProgress(null);
       analyzeCancelRef.current = false;
     }
-  }, [book, currentIndex, excludedBooks, excludedChapters, chapterRange, needsSetup]);
+  }, [book, currentIndex, visibleChapterOrders, chapterRange, needsSetup]);
 
   const handleRebuild = useCallback(async () => {
     if (!book) return;
@@ -1089,9 +1358,9 @@ export default function Home() {
         const i = toRebuild[step];
         const ch = book.chapters[i];
         setRebuildProgress({ current: step + 1, total: rebuildTotal, chapterTitle: ch.title, chapterIndex: i });
-        const { result: rebuildResult, model: rebuildModel } = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated, book.chapters.map((c) => c.title));
+        const { result: rebuildResult, model: rebuildModel, events: rebuildEvents } = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated, book.chapters.map((c) => c.title));
         accumulated = rebuildResult;
-        snapshots = upsertSnapshot(snapshots, i, accumulated, rebuildModel, APP_VERSION);
+        snapshots = upsertSnapshot(snapshots, i, accumulated, rebuildModel, APP_VERSION, rebuildEvents);
         const partial: StoredBookState = { ...rebuildBase, lastAnalyzedIndex: i, result: accumulated, snapshots };
         storedRef.current = partial;
         persistState(book.title, book.author, partial);
@@ -1110,7 +1379,7 @@ export default function Home() {
       setRebuildProgress(null);
       rebuildCancelRef.current = false;
     }
-  }, [book, currentIndex, excludedBooks, excludedChapters, chapterRange]);
+  }, [book, currentIndex, visibleChapterOrders, chapterRange]);
 
   // Process the full range start→end regardless of currentIndex
   const handleProcessBook = useCallback(async () => {
@@ -1135,9 +1404,9 @@ export default function Home() {
         const i = toProcess[step];
         const ch = book.chapters[i];
         setRebuildProgress({ current: step + 1, total, chapterTitle: ch.title, chapterIndex: i });
-        const { result: chResult, model: chModel } = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated, book.chapters.map((c) => c.title));
+        const { result: chResult, model: chModel, events: chEvents } = await analyzeChapter(book.title, book.author, { title: ch.title, text: ch.text }, accumulated, book.chapters.map((c) => c.title));
         accumulated = chResult;
-        snapshots = upsertSnapshot(snapshots, i, accumulated, chModel, APP_VERSION);
+        snapshots = upsertSnapshot(snapshots, i, accumulated, chModel, APP_VERSION, chEvents);
         const partial: StoredBookState = { ...processBase, lastAnalyzedIndex: i, result: accumulated, snapshots };
         storedRef.current = partial;
         persistState(book.title, book.author, partial);
@@ -1157,7 +1426,7 @@ export default function Home() {
       setRebuildProgress(null);
       rebuildCancelRef.current = false;
     }
-  }, [book, excludedBooks, excludedChapters, chapterRange]);
+  }, [book, visibleChapterOrders, chapterRange]);
 
   const handleDeleteSnapshot = useCallback((index: number) => {
     if (!book || !storedRef.current) return;
@@ -1184,7 +1453,11 @@ export default function Home() {
   }, [book, currentIndex]);
 
   const characters = result?.characters ?? [];
-  const derived = useDerivedEntities(storedRef.current?.snapshots ?? [], result ?? null);
+  const derived = useDerivedEntities(
+    storedRef.current?.snapshots ?? [],
+    result ?? null,
+    visibleSnapshots.length !== (storedRef.current?.snapshots ?? []).length ? visibleSnapshots : undefined,
+  );
   const displayed = characters
     .filter((c) => {
       if (filter !== 'all' && c.importance !== filter) return false;
@@ -1435,7 +1708,7 @@ export default function Home() {
   const isSeriesContinuation = stored?.lastAnalyzedIndex === -1;
   const isMetaOnly = book.chapters.every((ch) => !ch.text);
   const busy = analyzing || rebuilding;
-  const snapshotIndices = new Set((stored?.snapshots ?? []).map((s) => s.index));
+  const snapshotIndices = new Set(visibleSnapshots.map((s) => s.index));
   // Whether the displayed result is from a historical snapshot rather than the latest
   const isViewingHistory = viewingSnapshotIndex !== null;
   const effectiveBookmark = Math.max(0, Math.min(
@@ -1447,12 +1720,27 @@ export default function Home() {
   // When viewing beyond the bookmark (spoiler dismissed), spoilerDismissedIndex takes over.
   const currentChapterIndex = spoilerDismissedIndex ?? effectiveBookmark;
 
+  const readingPosition: ReadingPosition | undefined = stored?.readingPosition ?? (
+    stored?.readingBookmark != null ? { chapterIndex: stored.readingBookmark } : undefined
+  );
+
   const isBeyondBookmark = stored?.readingBookmark != null && currentIndex > effectiveBookmark;
   const showSpoilerBanner = isBeyondBookmark && spoilerDismissedIndex !== currentIndex;
 
   return (
     <main className="h-screen flex flex-col overflow-hidden">
       {showSettings && <SettingsModal onClose={() => { setShowSettings(false); setShowSetupPrompt(false); }} />}
+      {showBookStructureEditor && book && storedRef.current?.series && (
+        <BookStructureEditor
+          series={storedRef.current.series}
+          chapters={book.chapters.map(({ order, title, bookIndex, preview, contentType }) =>
+            ({ order, title, bookIndex, preview, contentType }))}
+          onSave={handleSaveSeries}
+          onClose={() => setShowBookStructureEditor(false)}
+          mode={bookStructureMode}
+          onReextract={handleReextractTitles}
+        />
+      )}
       {showBookmarkModal && book && (
         <BookmarkModal
           chapters={book.chapters}
@@ -1467,11 +1755,13 @@ export default function Home() {
       )}
       {showTimeline && book && (
         <StoryTimeline
-          snapshots={stored?.snapshots ?? []}
+          snapshots={visibleSnapshots}
           chapterTitles={book.chapters.map((ch) => ch.title)}
           currentIndex={viewingSnapshotIndex ?? stored?.lastAnalyzedIndex ?? 0}
           currentResult={result ?? undefined}
           onResultEdit={applyResultEdit}
+          readingPosition={readingPosition}
+          onSetReadingPosition={handleSetReadingPosition}
           onClose={() => setShowTimeline(false)}
           onJumpToChapter={(i) => { handleChapterChange(i); setShowTimeline(false); }}
         />
@@ -1497,6 +1787,13 @@ export default function Home() {
           </div>
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
+          {storedRef.current?.series && storedRef.current.series.books.length > 1 && (
+            <BookFilterSelector
+              series={storedRef.current.series}
+              filter={bookFilter}
+              onChange={setBookFilter}
+            />
+          )}
           <ProcessingQueue
             jobs={queue}
             onRemove={(id) => setQueue((q) => q.filter((j) => j.id !== id))}
@@ -1607,10 +1904,7 @@ export default function Home() {
             rebuildProgress={rebuildProgress}
             lastAnalyzedIndex={stored?.lastAnalyzedIndex ?? null}
             snapshotIndices={snapshotIndices}
-            excludedBooks={excludedBooks}
-            onToggleBook={toggleBook}
-            excludedChapters={excludedChapters}
-            onToggleChapter={toggleChapter}
+            visibleChapterOrders={visibleChapterOrders}
             chapterRange={chapterRange}
             onSetRange={setChapterRange}
             onDeleteSnapshot={handleDeleteSnapshot}
@@ -1931,7 +2225,7 @@ export default function Home() {
                             <CharacterCard
                               key={character.name}
                               character={character}
-                              snapshots={stored?.snapshots ?? []}
+                              snapshots={visibleSnapshots}
                               chapterTitles={book.chapters.map((ch) => ch.title)}
                               currentResult={result}
                               onResultEdit={applyResultEdit}
@@ -1948,7 +2242,7 @@ export default function Home() {
                       characters={characters}
                       locations={result.locations}
                       bookTitle={book.title}
-                      snapshots={stored?.snapshots ?? []}
+                      snapshots={visibleSnapshots}
                       chapterTitles={book.chapters.map((ch) => ch.title)}
                       currentResult={result}
                       onResultEdit={applyResultEdit}
@@ -1962,15 +2256,58 @@ export default function Home() {
                   {tab === 'arcs' && (
                     <ArcsPanel
                       arcs={result.arcs ?? []}
-                      snapshots={stored?.snapshots ?? []}
+                      snapshots={visibleSnapshots}
                       chapterTitles={book.chapters.map((ch) => ch.title)}
                       currentResult={result}
                       onResultEdit={applyResultEdit}
                       arcChapterMap={derived.arcChapterMap}
                       currentChapterIndex={currentChapterIndex}
-                      parentArcs={stored?.parentArcs}
+                      parentArcs={storedRef.current?.series
+                        ? getActiveParentArcs(storedRef.current.series, bookFilter, storedRef.current?.parentArcs)
+                        : storedRef.current?.parentArcs}
                       onUpdateParentArcs={handleUpdateParentArcs}
+                      staleBooks={storedRef.current?.series ? getStaleBooks(storedRef.current.series).map((b) => b.title) : undefined}
+                      onRegroupArcs={async () => {
+                        if (!book || !storedRef.current) return;
+                        const rEnd = chapterRange?.end ?? (book.chapters.length - 1);
+                        const withParents = await maybeGenerateParentArcs(storedRef.current, book.title, book.author, rEnd, false);
+                        storedRef.current = withParents;
+                        persistState(book.title, book.author, withParents);
+                        setParentArcsRev((r) => r + 1);
+                      }}
                     />
+                  )}
+
+                  {tab === 'manage' && storedRef.current?.series && storedRef.current.series.books.length > 1 && (
+                    <button
+                      onClick={() => { setBookStructureMode('manage'); setShowBookStructureEditor(true); }}
+                      className="mb-4 px-4 py-2 rounded-xl border border-stone-200 dark:border-zinc-700 text-sm text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-200 hover:border-stone-400 dark:hover:border-zinc-500 transition-colors w-full text-left"
+                    >
+                      Edit Book Structure
+                      <span className="text-xs text-stone-400 dark:text-zinc-500 ml-2">
+                        {storedRef.current.series.books.length} books
+                      </span>
+                    </button>
+                  )}
+                  {storedRef.current?.series && getStaleBooks(storedRef.current.series).length > 0 && (
+                    <div className="mb-4 px-4 py-3 rounded-xl border border-amber-300/50 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 flex items-center justify-between gap-3">
+                      <p className="text-xs text-amber-700 dark:text-amber-400">
+                        Book structure changed for {getStaleBooks(storedRef.current.series).map((b) => b.title).join(', ')}. Arc groupings may be outdated.
+                      </p>
+                      <button
+                        onClick={async () => {
+                          if (!book || !storedRef.current) return;
+                          const rEnd = chapterRange?.end ?? (book.chapters.length - 1);
+                          const withParents = await maybeGenerateParentArcs(storedRef.current, book.title, book.author, rEnd, false);
+                          storedRef.current = withParents;
+                          persistState(book.title, book.author, withParents);
+                          setParentArcsRev((r) => r + 1);
+                        }}
+                        className="flex-shrink-0 text-xs font-medium text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300 transition-colors"
+                      >
+                        Re-group arcs
+                      </button>
+                    </div>
                   )}
 
                   {tab === 'manage' && stored && result && (
@@ -2004,6 +2341,77 @@ export default function Home() {
           onClose={() => setShowChat(false)}
         />
       )}
+      {/* Global entity search */}
+      {result && stored && !showSearch && !searchEntity && (
+        <SearchFAB onClick={() => setShowSearch(true)} />
+      )}
+      {result && stored && (
+        <SearchSheet
+          isOpen={showSearch}
+          onClose={() => setShowSearch(false)}
+          onEntitySelect={handleSearchEntitySelect}
+          characters={derived.aggregated.characters}
+          locations={derived.aggregated.locations}
+          arcs={derived.aggregated.arcs}
+        />
+      )}
+      {/* Modals opened from search */}
+      {searchEntity?.type === 'character' && (() => {
+        let char = result?.characters.find((c) => c.name === searchEntity.name);
+        if (!char) {
+          char = derived.aggregated.characters.find((e) => e.character.name === searchEntity.name)?.character;
+        }
+        if (!char) return null;
+        const inCurrent = !!result?.characters.find((c) => c.name === searchEntity.name);
+        return (
+          <CharacterModal
+            character={char}
+            snapshots={stored?.snapshots ?? []}
+            chapterTitles={book?.chapters.map((ch) => ch.title) ?? []}
+            currentResult={inCurrent ? result ?? undefined : undefined}
+            onResultEdit={inCurrent ? applyResultEdit : undefined}
+            currentChapterIndex={currentChapterIndex}
+            onClose={() => setSearchEntity(null)}
+            onEntityClick={(type, name) => {
+              setSearchEntity({ type, name });
+            }}
+          />
+        );
+      })()}
+      {searchEntity?.type === 'location' && (() => {
+        const inCurrent = result?.locations?.some((l) => l.name === searchEntity.name) ?? false;
+        return (
+          <LocationModal
+            locationName={searchEntity.name}
+            snapshots={stored?.snapshots ?? []}
+            chapterTitles={book?.chapters.map((ch) => ch.title) ?? []}
+            currentResult={inCurrent ? result ?? undefined : undefined}
+            onResultEdit={inCurrent ? applyResultEdit : undefined}
+            currentChapterIndex={currentChapterIndex}
+            onClose={() => setSearchEntity(null)}
+            onEntityClick={(type, name) => {
+              setSearchEntity({ type, name });
+            }}
+          />
+        );
+      })()}
+      {searchEntity?.type === 'arc' && (() => {
+        const inCurrent = result?.arcs?.some((a) => a.name === searchEntity.name) ?? false;
+        return (
+          <NarrativeArcModal
+            arcName={searchEntity.name}
+            snapshots={stored?.snapshots ?? []}
+            chapterTitles={book?.chapters.map((ch) => ch.title) ?? []}
+            currentResult={inCurrent ? result ?? undefined : undefined}
+            onResultEdit={inCurrent ? applyResultEdit : undefined}
+            currentChapterIndex={currentChapterIndex}
+            onClose={() => setSearchEntity(null)}
+            onEntityClick={(type, name) => {
+              setSearchEntity({ type, name });
+            }}
+          />
+        );
+      })()}
     </main>
   );
 }

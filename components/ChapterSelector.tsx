@@ -17,10 +17,7 @@ interface Props {
   rebuildProgress: { current: number; total: number; chapterTitle?: string; chapterIndex?: number } | null;
   lastAnalyzedIndex: number | null;
   snapshotIndices?: Set<number>;
-  excludedBooks?: Set<number>;
-  onToggleBook?: (bookIndex: number) => void;
-  excludedChapters?: Set<number>;
-  onToggleChapter?: (chapterIndex: number) => void;
+  visibleChapterOrders?: Set<number> | null;
   chapterRange?: { start: number; end: number } | null;
   onSetRange?: (range: { start: number; end: number } | null) => void;
   onProcessBook?: () => void;
@@ -63,7 +60,6 @@ interface ChapterItemProps {
   chapters: EbookChapter[];
   onChange: (index: number) => void;
   setLocationInput: (v: string) => void;
-  onToggleChapter?: (index: number) => void;
   onDeleteSnapshot?: (index: number) => void;
   isRangeStart?: boolean;
   isRangeEnd?: boolean;
@@ -75,7 +71,7 @@ interface ChapterItemProps {
 
 function ChapterItem({
   ch, globalIndex, currentIndex, lastAnalyzedIndex, snapshotIndices,
-  isExcluded, rebuilding, rebuildProgress, mode, chapters, onChange, setLocationInput, onToggleChapter, onDeleteSnapshot,
+  isExcluded, rebuilding, rebuildProgress, mode, chapters, onChange, setLocationInput, onDeleteSnapshot,
   isRangeStart, isRangeEnd, onSetRangeStart, onSetRangeEnd,
   readingBookmark, onSetBookmark,
 }: ChapterItemProps) {
@@ -165,19 +161,6 @@ function ChapterItem({
           }`}
         >
           ⌟
-        </button>
-      )}
-      {onToggleChapter && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onToggleChapter(globalIndex); }}
-          title={isExcluded ? 'Include in analysis' : 'Exclude from analysis'}
-          className={`flex-shrink-0 ml-0.5 w-4 h-4 flex items-center justify-center rounded text-[9px] opacity-0 group-hover:opacity-100 transition-opacity ${
-            isExcluded
-              ? 'text-stone-400 dark:text-zinc-500 hover:text-stone-800 dark:hover:text-zinc-300 opacity-100'
-              : 'text-stone-300 dark:text-zinc-700 hover:text-red-500/70'
-          }`}
-        >
-          {isExcluded ? '↩' : '✕'}
         </button>
       )}
       {onDeleteSnapshot && hasSnapshot && (
@@ -361,7 +344,7 @@ function ChapterCombobox({ chapters, currentIndex, lastAnalyzedIndex, isOmnibus,
 export default function ChapterSelector({
   chapters, currentIndex, onChange, onAnalyze, onCancelAnalyze, onRebuild, onCancelRebuild,
   analyzing, rebuilding, rebuildProgress, lastAnalyzedIndex,
-  snapshotIndices, excludedBooks, onToggleBook, excludedChapters, onToggleChapter,
+  snapshotIndices, visibleChapterOrders,
   chapterRange, onSetRange, onProcessBook, onDeleteSnapshot, readingBookmark, onSetBookmark, metaOnly,
   needsSetup, onCompleteSetup,
 }: Props) {
@@ -372,7 +355,7 @@ export default function ChapterSelector({
   const totalLocations = chapterIndexToLocation(chapters.length - 1, chapters);
   const busy = analyzing || rebuilding || !!metaOnly;
 
-  // Build book groups (omnibus only)
+  // Build book groups (omnibus only), filtering by visibleChapterOrders
   const bookGroups = new Map<number, {
     bookTitle: string;
     items: Array<{ ch: EbookChapter; globalIndex: number; chapterNum: number }>;
@@ -381,6 +364,7 @@ export default function ChapterSelector({
     const counters = new Map<number, number>();
     for (let i = 0; i < chapters.length; i++) {
       const ch = chapters[i];
+      if (visibleChapterOrders && !visibleChapterOrders.has(i)) continue;
       const bIdx = ch.bookIndex ?? 0;
       if (!bookGroups.has(bIdx)) bookGroups.set(bIdx, { bookTitle: ch.bookTitle ?? '', items: [] });
       const num = (counters.get(bIdx) ?? 0) + 1;
@@ -433,7 +417,7 @@ export default function ChapterSelector({
   const rangeEnd = chapterRange?.end;
   const itemProps = {
     currentIndex, lastAnalyzedIndex, snapshotIndices, rebuilding, rebuildProgress, mode, chapters, onChange, setLocationInput,
-    onToggleChapter, onDeleteSnapshot,
+    onDeleteSnapshot,
     onSetRangeStart: onSetRange ? handleSetRangeStart : undefined,
     onSetRangeEnd: onSetRange ? handleSetRangeEnd : undefined,
     readingBookmark,
@@ -677,8 +661,7 @@ export default function ChapterSelector({
               : undefined;
 
             if (focusedGroup) {
-              const [focusedBookIdx, { items }] = focusedGroup;
-              const isFocusedExcluded = excludedBooks?.has(focusedBookIdx) ?? false;
+              const [, { items }] = focusedGroup;
               const visibleItems = items.filter(({ globalIndex }) =>
                 (rangeStart === undefined || globalIndex >= rangeStart) &&
                 (rangeEnd === undefined || globalIndex <= rangeEnd),
@@ -686,7 +669,7 @@ export default function ChapterSelector({
               return (
                 <ul className="space-y-0.5">
                   {visibleItems.map(({ ch, globalIndex }) => (
-                    <ChapterItem key={ch.id} ch={ch} globalIndex={globalIndex} isExcluded={isFocusedExcluded || (excludedChapters?.has(globalIndex) ?? false)} isRangeStart={rangeStart === globalIndex} isRangeEnd={rangeEnd === globalIndex} {...itemProps} />
+                    <ChapterItem key={ch.id} ch={ch} globalIndex={globalIndex} isExcluded={false} isRangeStart={rangeStart === globalIndex} isRangeEnd={rangeEnd === globalIndex} {...itemProps} />
                   ))}
                 </ul>
               );
@@ -701,7 +684,6 @@ export default function ChapterSelector({
               );
               if (rangeFilteredItems.length === 0) return null;
               const isExpanded = expandedBooks.has(bookIdx);
-              const isExcluded = excludedBooks?.has(bookIdx) ?? false;
               const analyzedCount = rangeFilteredItems.filter(({ globalIndex }) =>
                 lastAnalyzedIndex !== null && globalIndex <= lastAnalyzedIndex,
               ).length;
@@ -711,9 +693,7 @@ export default function ChapterSelector({
                 <li key={bookIdx}>
                   {/* Book header */}
                   <div className={`flex items-center rounded-lg border transition-colors ${
-                    isExcluded
-                      ? 'border-stone-200/40 dark:border-zinc-800/40 bg-transparent'
-                      : isCurrent
+                    isCurrent
                       ? 'border-amber-500/20 bg-amber-500/5'
                       : 'border-stone-200 dark:border-zinc-800 bg-stone-100/20 dark:bg-zinc-800/20 hover:bg-stone-100/40 dark:hover:bg-zinc-800/40'
                   }`}>
@@ -721,30 +701,17 @@ export default function ChapterSelector({
                       onClick={() => toggleExpand(bookIdx)}
                       className="flex-1 flex items-center gap-2 px-2.5 py-2 text-left min-w-0"
                     >
-                      <span className={`flex-shrink-0 text-[10px] ${isExcluded ? 'text-stone-300 dark:text-zinc-700' : isExpanded ? 'text-stone-500 dark:text-zinc-400' : 'text-stone-400 dark:text-zinc-600'}`}>
+                      <span className={`flex-shrink-0 text-[10px] ${isExpanded ? 'text-stone-500 dark:text-zinc-400' : 'text-stone-400 dark:text-zinc-600'}`}>
                         {isExpanded ? '▾' : '▸'}
                       </span>
-                      <span className={`text-xs font-semibold truncate ${isExcluded ? 'text-stone-300 dark:text-zinc-700 line-through' : isCurrent ? 'text-amber-400/80' : 'text-stone-500 dark:text-zinc-400'}`}>
+                      <span className={`text-xs font-semibold truncate ${isCurrent ? 'text-amber-400/80' : 'text-stone-500 dark:text-zinc-400'}`}>
                         {bookTitle}
                       </span>
                     </button>
                     <div className="flex items-center gap-1.5 pr-2 flex-shrink-0">
-                      {!isExcluded && (
-                        <span className="text-[10px] text-stone-400 dark:text-zinc-600">
-                          {analyzedCount > 0 ? `${analyzedCount}/${items.length}` : `${items.length} ch.`}
-                        </span>
-                      )}
-                      <button
-                        onClick={() => onToggleBook?.(bookIdx)}
-                        title={isExcluded ? 'Include this book' : 'Exclude this book'}
-                        className={`text-[10px] w-5 h-5 flex items-center justify-center rounded border transition-colors ${
-                          isExcluded
-                            ? 'border-stone-200 dark:border-zinc-800 text-stone-300 dark:text-zinc-700 hover:border-stone-300 dark:hover:border-zinc-700 hover:text-stone-400 dark:hover:text-zinc-500'
-                            : 'border-stone-300 dark:border-zinc-700 text-stone-400 dark:text-zinc-500 hover:border-red-900/60 hover:text-red-500/60'
-                        }`}
-                      >
-                        {isExcluded ? '✗' : '✓'}
-                      </button>
+                      <span className="text-[10px] text-stone-400 dark:text-zinc-600">
+                        {analyzedCount > 0 ? `${analyzedCount}/${items.length}` : `${items.length} ch.`}
+                      </span>
                     </div>
                   </div>
 
@@ -752,7 +719,7 @@ export default function ChapterSelector({
                   {isExpanded && (
                     <ul className="mt-0.5 ml-2 space-y-0.5 border-l border-stone-200 dark:border-zinc-800 pl-2">
                       {rangeFilteredItems.map(({ ch, globalIndex }) => (
-                        <ChapterItem key={ch.id} ch={ch} globalIndex={globalIndex} isExcluded={isExcluded || (excludedChapters?.has(globalIndex) ?? false)} isRangeStart={rangeStart === globalIndex} isRangeEnd={rangeEnd === globalIndex} {...itemProps} />
+                        <ChapterItem key={ch.id} ch={ch} globalIndex={globalIndex} isExcluded={false} isRangeStart={rangeStart === globalIndex} isRangeEnd={rangeEnd === globalIndex} {...itemProps} />
                       ))}
                     </ul>
                   )}
@@ -766,9 +733,10 @@ export default function ChapterSelector({
           /* Flat list for non-omnibus */
           <ul className="space-y-0.5">
             {chapters.map((ch, i) => {
+              if (visibleChapterOrders && !visibleChapterOrders.has(i)) return null;
               if (rangeStart !== undefined && i < rangeStart) return null;
               if (rangeEnd !== undefined && i > rangeEnd) return null;
-              return <ChapterItem key={ch.id} ch={ch} globalIndex={i} isExcluded={excludedChapters?.has(i) ?? false} isRangeStart={rangeStart === i} isRangeEnd={rangeEnd === i} {...itemProps} />;
+              return <ChapterItem key={ch.id} ch={ch} globalIndex={i} isExcluded={false} isRangeStart={rangeStart === i} isRangeEnd={rangeEnd === i} {...itemProps} />;
             })}
           </ul>
         )}

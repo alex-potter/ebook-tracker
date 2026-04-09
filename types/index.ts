@@ -15,6 +15,8 @@ export interface EbookChapter {
   order: number;
   bookIndex?: number;   // which book in an omnibus (0-based); undefined for standalone
   bookTitle?: string;   // title of that book within the omnibus
+  preview?: string;     // first meaningful line of content (~80 chars)
+  contentType?: 'story' | 'front-matter' | 'back-matter' | 'structural';
 }
 
 export interface ParsedEbook {
@@ -69,6 +71,28 @@ export interface ParentArc {
   summary: string;     // AI-generated summary of the grouped theme
 }
 
+export interface BookDefinition {
+  index: number;              // 0-based book order in series
+  title: string;              // detected or user-provided book title
+  chapterStart: number;       // first chapter order (inclusive)
+  chapterEnd: number;         // last chapter order (inclusive)
+  excludedChapters: number[]; // chapter orders excluded within this book
+  confirmed: boolean;         // user has reviewed/confirmed this book's bounds
+  excluded?: boolean;         // entire book excluded from analysis and sidebar
+  parentArcs?: ParentArc[];   // per-book thematic arc groupings
+  arcGroupingHash?: string;   // hash of bounds at last arc grouping, for staleness detection
+}
+
+export interface SeriesDefinition {
+  books: BookDefinition[];
+  seriesArcs?: ParentArc[];   // series-wide thematic arc groupings
+  unassignedChapters: number[]; // chapter orders not belonging to any book (auto-derived)
+}
+
+export type BookFilter =
+  | { mode: 'all' }
+  | { mode: 'books'; indices: number[] };
+
 export interface AnalysisResult {
   characters: Character[];
   locations?: LocationInfo[];
@@ -76,9 +100,26 @@ export interface AnalysisResult {
   summary: string;
 }
 
+export interface ChapterEvent {
+  summary: string;
+  characters: string[];
+  locations: string[];
+  characterSnapshots: Character[];
+  locationSnapshots: LocationInfo[];
+  arcSnapshots?: NarrativeArc[];
+  chapterProgress: number;
+  textAnchor?: string;
+}
+
+export interface ReadingPosition {
+  chapterIndex: number;
+  progress?: number;
+}
+
 export interface Snapshot {
   index: number;         // chapter index (0-based)
   result: AnalysisResult;
+  events?: ChapterEvent[];
   model?: string;        // model used to analyze this chapter (e.g. "qwen2.5:14b", "claude-haiku-4-5")
   appVersion?: string;   // BookBuddy version that processed this chapter (e.g. "0.1.0")
 }
@@ -110,7 +151,15 @@ export interface PinUpdates {
 }
 
 export interface BookMeta {
-  chapters: Array<{ id: string; title: string; order: number; bookIndex?: number; bookTitle?: string }>;
+  chapters: Array<{
+    id: string;
+    title: string;
+    order: number;
+    bookIndex?: number;
+    bookTitle?: string;
+    preview?: string;
+    contentType?: 'story' | 'front-matter' | 'back-matter' | 'structural';
+  }>;
   books?: string[];
 }
 
@@ -123,7 +172,9 @@ export interface StoredBookState {
   chapterRange?: { start: number; end: number };
   bookMeta?: BookMeta;
   readingBookmark?: number;
+  readingPosition?: ReadingPosition;
   parentArcs?: ParentArc[];
+  series?: SeriesDefinition;  // NEW
 }
 
 export interface SavedBookEntry {

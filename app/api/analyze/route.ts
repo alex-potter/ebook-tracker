@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { AnalysisResult } from '@/types';
+import type { AnalysisResult, Character, LocationInfo, NarrativeArc, ChapterEvent } from '@/types';
 import { reconcileResult, computeNameOverlaps, updateArcReferences, buildCharReconcilePrompt, type CallAndParseFn } from '@/lib/reconcile';
 import { levenshtein } from '@/lib/ai-shared';
 import { escapeRegex, validateCharactersAgainstText, validateLocationsAgainstText } from '@/lib/validate-entities';
@@ -519,6 +519,15 @@ function normLoc(name: string): string {
     .replace(/^(the|a|an)\s+/, '')
     .split(',')[0].trim()
     .split(/\s+/).sort().join(' ');
+}
+
+/** Extract the first ~100 chars of text, trimmed to a word boundary. */
+function extractTextAnchor(text: string, maxLen = 100): string {
+  const clean = text.trim();
+  if (clean.length <= maxLen) return clean;
+  const trimmed = clean.slice(0, maxLen);
+  const lastSpace = trimmed.lastIndexOf(' ');
+  return (lastSpace > 0 ? trimmed.slice(0, lastSpace) : trimmed).trim();
 }
 
 /** Deduplicate locations, merging prefix-word subsets and alias matches. */
@@ -1509,6 +1518,13 @@ interface LocDeltaResult {
   summary?: string;
 }
 
+interface ChunkDelta {
+  characters: Character[];
+  locations: LocationInfo[];
+  arcs: NarrativeArc[];
+  summary: string;
+}
+
 async function runMultiPassFull(
   bookTitle: string,
   bookAuthor: string,
@@ -1664,7 +1680,7 @@ async function runMultiPassDelta(
   previousResult: AnalysisResult,
   config: AnalyzeConfig,
   contextWindow?: number,
-): Promise<{ result: AnalysisResult; totalRateLimitMs: number }> {
+): Promise<{ result: AnalysisResult; totalRateLimitMs: number; chunkDelta: ChunkDelta }> {
   let totalRateLimitMs = 0;
 
   // Pass 1: Characters
@@ -1781,7 +1797,13 @@ async function runMultiPassDelta(
   }
 
   console.log(`[analyze] Delta complete: ${groupedCharacters.length} chars, ${finalResult.arcs?.length ?? 0} arcs, ${groupedLocations?.length ?? 0} locs`);
-  return { result: { ...finalResult, locations: groupedLocations, characters: groupedCharacters }, totalRateLimitMs };
+  const chunkDelta: ChunkDelta = {
+    characters: deltaChars,
+    locations: groundedDeltaLocs,
+    arcs: sanitizeLLMArcs(arcDelta.updatedArcs ?? []),
+    summary: locDelta.summary ?? '',
+  };
+  return { result: { ...finalResult, locations: groupedLocations, characters: groupedCharacters }, totalRateLimitMs, chunkDelta };
 }
 
 // ─── Route handlers ───────────────────────────────────────────────────────────
@@ -1840,6 +1862,7 @@ export async function POST(req: NextRequest) {
     const isDelta = !!(previousResult && newChapters?.length);
     let result: AnalysisResult;
     let totalRateLimitMs = 0;
+    let events: ChapterEvent[] = [];
 
     if (isDelta) {
       const newText = newChapters!
@@ -1865,10 +1888,20 @@ export async function POST(req: NextRequest) {
         if (chunks.length > 1) {
           console.log(`[analyze] Chapter "${currentChapterTitle}" chunk ${chunk.index + 1}/${chunk.total} (${chunk.text.length} chars)`);
         }
-        const { result: chunkResult, totalRateLimitMs: chunkRl } = await runMultiPassDelta(
+        const { result: chunkResult, totalRateLimitMs: chunkRl, chunkDelta } = await runMultiPassDelta(
           bookTitle, bookAuthor, currentChapterTitle, chunk.text, accumulated, config, contextWindow,
         );
         totalRateLimitMs += chunkRl;
+        events.push({
+          summary: chunkDelta.summary,
+          characters: chunkDelta.characters.map((c) => c.name),
+          locations: chunkDelta.locations.map((l) => l.name),
+          characterSnapshots: chunkDelta.characters,
+          locationSnapshots: chunkDelta.locations,
+          arcSnapshots: chunkDelta.arcs.length > 0 ? chunkDelta.arcs : undefined,
+          chapterProgress: (chunk.index + 0.5) / chunk.total,
+          textAnchor: extractTextAnchor(chunk.text),
+        });
         accumulated = chunkResult;
       }
       result = accumulated;
@@ -1899,19 +1932,40 @@ export async function POST(req: NextRequest) {
       totalRateLimitMs += firstRl;
       let accumulated = firstResult;
 
+      events.push({
+        summary: firstResult.summary,
+        characters: firstResult.characters.map((c) => c.name),
+        locations: (firstResult.locations ?? []).map((l) => l.name),
+        characterSnapshots: firstResult.characters,
+        locationSnapshots: firstResult.locations ?? [],
+        arcSnapshots: firstResult.arcs?.length ? firstResult.arcs : undefined,
+        chapterProgress: (0 + 0.5) / chunks[0].total,
+        textAnchor: extractTextAnchor(chunks[0].text),
+      });
+
       for (let i = 1; i < chunks.length; i++) {
         const chunk = chunks[i];
         console.log(`[analyze] Chapter "${currentChapterTitle}" chunk ${chunk.index + 1}/${chunk.total} (${chunk.text.length} chars)`);
-        const { result: chunkResult, totalRateLimitMs: chunkRl } = await runMultiPassDelta(
+        const { result: chunkResult, totalRateLimitMs: chunkRl, chunkDelta } = await runMultiPassDelta(
           bookTitle, bookAuthor, currentChapterTitle, chunk.text, accumulated, config, contextWindow,
         );
         totalRateLimitMs += chunkRl;
+        events.push({
+          summary: chunkDelta.summary,
+          characters: chunkDelta.characters.map((c) => c.name),
+          locations: chunkDelta.locations.map((l) => l.name),
+          characterSnapshots: chunkDelta.characters,
+          locationSnapshots: chunkDelta.locations,
+          arcSnapshots: chunkDelta.arcs.length > 0 ? chunkDelta.arcs : undefined,
+          chapterProgress: (chunk.index + 0.5) / chunk.total,
+          textAnchor: extractTextAnchor(chunk.text),
+        });
         accumulated = chunkResult;
       }
       result = accumulated;
     }
 
-    return NextResponse.json({ ...result, _model: modelName, _rateLimitWaitMs: totalRateLimitMs || undefined });
+    return NextResponse.json({ ...result, _events: events, _model: modelName, _rateLimitWaitMs: totalRateLimitMs || undefined });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[analyze] error:', err);
