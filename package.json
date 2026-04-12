@@ -17,6 +17,7 @@
     "@capacitor/android": "^6.0.0",
     "@capacitor/core": "^6.0.0",
     "cross-env": "^7.0.3",
+    "framer-motion": "^12.38.0",
     "jszip": "^3.10.1",
     "next": "^14.2.0",
     "potrace": "^2.1.8",
