@@ -35,9 +35,18 @@ import SearchSheet from '@/components/SearchSheet';
 import CharacterModal from '@/components/CharacterModal';
 import LocationModal from '@/components/LocationModal';
 import NarrativeArcModal from '@/components/NarrativeArcModal';
+import ExploreHeader from '@/components/explore/ExploreHeader';
+import BottomNav from '@/components/explore/BottomNav';
+import PullUpSheet from '@/components/explore/PullUpSheet';
+import RecapStrip from '@/components/explore/RecapStrip';
+import SnapshotNav from '@/components/explore/SnapshotNav';
+import NewCharacterCard from '@/components/cards/CharacterCard';
+import NewLocationCard from '@/components/cards/LocationCard';
+import ArcCard from '@/components/cards/ArcCard';
+import WorkshopScreen from '@/components/workshop/WorkshopScreen';
 
 type SortKey = 'importance' | 'name' | 'status';
-type MainTab = 'characters' | 'locations' | 'map' | 'arcs' | 'manage';
+type MainTab = 'characters' | 'locations' | 'arcs' | 'map';
 
 const IMPORTANCE_ORDER: Record<Character['importance'], number> = {
   main: 0,
@@ -381,8 +390,8 @@ export default function Home() {
   const [importError, setImportError] = useState<string | null>(null);
   const [myBooksRev, setMyBooksRev] = useState(0);
   const [parentArcsRev, setParentArcsRev] = useState(0);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showWorkshop, setShowWorkshop] = useState(false);
   const [submitBook, setSubmitBook] = useState<{ title: string; author: string } | null>(null);
   const [showTimeline, setShowTimeline] = useState(false);
   const [showChat, setShowChat] = useState(false);
@@ -639,8 +648,6 @@ export default function Home() {
   const [bookFilter, setBookFilter] = useState<BookFilter>({ mode: 'all' });
   const [showSearch, setShowSearch] = useState(false);
   const [searchEntity, setSearchEntity] = useState<{ type: 'character' | 'location' | 'arc'; name: string } | null>(null);
-  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
-  const headerMenuRef = useRef<HTMLDivElement>(null);
   const playIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Drive playback: advance one snapshot per interval tick
@@ -867,18 +874,6 @@ export default function Home() {
 
   // Keep bookRef in sync so the queue processor can read the active book without stale closures
   useEffect(() => { bookRef.current = book; }, [book]);
-
-  // Close header overflow menu on outside click
-  useEffect(() => {
-    if (!showHeaderMenu) return;
-    function handleClick(e: MouseEvent) {
-      if (headerMenuRef.current && !headerMenuRef.current.contains(e.target as Node)) {
-        setShowHeaderMenu(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [showHeaderMenu]);
 
   // Queue processor: runs one job at a time, saving results to localStorage
   useEffect(() => {
@@ -1742,7 +1737,8 @@ export default function Home() {
   const showSpoilerBanner = isBeyondBookmark && spoilerDismissedIndex !== currentIndex;
 
   return (
-    <main className="h-screen flex flex-col overflow-hidden">
+    <main className="h-screen flex flex-col overflow-hidden bg-paper">
+      {/* Modals — unchanged */}
       {showSettings && <SettingsModal onClose={() => { setShowSettings(false); setShowSetupPrompt(false); }} />}
       {showBookStructureEditor && book && storedRef.current?.series && (
         <BookStructureEditor
@@ -1780,373 +1776,241 @@ export default function Home() {
           onJumpToChapter={(i) => { handleChapterChange(i); setShowTimeline(false); }}
         />
       )}
-      <header className="bg-white dark:bg-zinc-900 border-b border-stone-200 dark:border-zinc-800 px-2 sm:px-4 py-2 sm:py-3 flex items-center justify-between gap-1 sm:gap-2 flex-shrink-0">
-        <div className="flex items-center gap-1 sm:gap-2 min-w-0">
-          {/* Hamburger — mobile only */}
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="lg:hidden flex-shrink-0 w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-stone-500 dark:text-zinc-400 hover:text-stone-800 dark:hover:text-zinc-200 transition-colors rounded-lg"
-            aria-label="Open chapter list"
-          >
-            <svg width="18" height="14" viewBox="0 0 18 14" fill="none">
-              <rect width="18" height="2" rx="1" fill="currentColor"/>
-              <rect y="6" width="18" height="2" rx="1" fill="currentColor"/>
-              <rect y="12" width="18" height="2" rx="1" fill="currentColor"/>
-            </svg>
-          </button>
-          <img src={`${basePath}/icon.svg`} alt="BookBuddy" className="w-6 h-6 flex-shrink-0 dark:invert hidden sm:block" />
-          <div className="min-w-0">
-            <h1 className="font-bold text-stone-900 dark:text-zinc-100 leading-tight truncate text-sm sm:text-base">{book.title}</h1>
-            <p className="text-xs text-stone-400 dark:text-zinc-500 truncate">{book.author}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-1 sm:gap-3">
-          {storedRef.current?.series && storedRef.current.series.books.length > 1 && (
-            <BookFilterSelector
-              series={storedRef.current.series}
-              filter={bookFilter}
-              onChange={setBookFilter}
-            />
-          )}
-          <ProcessingQueue
-            jobs={queue}
-            onRemove={(id) => setQueue((q) => q.filter((j) => j.id !== id))}
-            onCancelCurrent={() => { queueCancelRef.current = true; }}
-            onClearDone={() => setQueue((q) => q.filter((j) => j.status !== 'done' && j.status !== 'error'))}
-          />
-          {isSeriesContinuation && <span className="hidden sm:inline text-xs text-violet-400 font-medium">Series mode</span>}
-          {hasStoredState && <span className="hidden md:inline text-xs text-stone-400 dark:text-zinc-600">Saved · ch.{stored.lastAnalyzedIndex + 1}</span>}
-          {hasStoredState && (
-            <button
-              onClick={() => { setBookmarkModalMode('update'); setShowBookmarkModal(true); }}
-              className={`text-xs flex items-center gap-1 transition-colors ${
-                stored?.readingBookmark != null
-                  ? 'text-amber-500/80 hover:text-amber-500'
-                  : 'text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300'
-              }`}
-              title="Reading bookmark"
-            >
-              <svg width="8" height="11" viewBox="0 0 10 14" fill={stored?.readingBookmark != null ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={stored?.readingBookmark != null ? 0 : 1.5} className="flex-shrink-0">
-                <path d="M0 0h10v14L5 10.5 0 14V0z"/>
-              </svg>
-              <span className="hidden sm:inline">{stored?.readingBookmark != null ? `Ch.${stored.readingBookmark + 1}` : 'Bookmark'}</span>
-            </button>
-          )}
-          {/* Desktop-only inline buttons */}
-          {hasStoredState && (
-            <button
-              onClick={() => exportBook(book.title, book.author, book)}
-              className="hidden sm:inline text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
-              title="Export .bookbuddy file"
-            >
-              Export
-            </button>
-          )}
-          {hasStoredState && stored.lastAnalyzedIndex >= 0 && (
-            <button
-              onClick={handleShare}
-              className="hidden sm:inline text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
-              title="Share reading context with any AI assistant (Gemini, ChatGPT, Claude…)"
-            >
-              {shareLabel}
-            </button>
-          )}
-          {hasStoredState && (
-            <button
-              onClick={() => setShowChat(true)}
-              className="text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
-              title="Ask your AI assistant about the book"
-            >
-              💬
-            </button>
-          )}
-          <button
-            onClick={() => setShowSettings(true)}
-            className="hidden sm:inline text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
-            title="AI Settings"
-          >
-            ⚙
-          </button>
-          <button
-            onClick={toggleTheme}
-            className="hidden sm:inline text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
-            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-          >
-            {isDark ? '☀︎' : '◗'}
-          </button>
-          <button
-            onClick={() => { setBook(null); setResult(null); storedRef.current = null; seriesBaseRef.current = null; }}
-            className="hidden sm:inline text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors whitespace-nowrap"
-          >
-            Change book
-          </button>
-          {/* Mobile overflow menu */}
-          <div className="relative sm:hidden" ref={headerMenuRef}>
-            <button
-              onClick={() => setShowHeaderMenu((v) => !v)}
-              className="w-8 h-8 flex items-center justify-center text-stone-500 dark:text-zinc-400 hover:text-stone-800 dark:hover:text-zinc-200 transition-colors rounded-lg"
-              aria-label="More actions"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <circle cx="8" cy="2.5" r="1.5"/>
-                <circle cx="8" cy="8" r="1.5"/>
-                <circle cx="8" cy="13.5" r="1.5"/>
-              </svg>
-            </button>
-            {showHeaderMenu && (
-              <div className="absolute right-0 top-full mt-1 z-50 bg-white dark:bg-zinc-800 border border-stone-200 dark:border-zinc-700 rounded-lg shadow-lg py-1 min-w-[160px]">
-                {hasStoredState && (
-                  <button
-                    onClick={() => { exportBook(book.title, book.author, book); setShowHeaderMenu(false); }}
-                    className="w-full text-left px-3 py-2 text-sm text-stone-700 dark:text-zinc-300 hover:bg-stone-100 dark:hover:bg-zinc-700"
-                  >
-                    Export
-                  </button>
-                )}
-                {hasStoredState && stored.lastAnalyzedIndex >= 0 && (
-                  <button
-                    onClick={() => { handleShare(); setShowHeaderMenu(false); }}
-                    className="w-full text-left px-3 py-2 text-sm text-stone-700 dark:text-zinc-300 hover:bg-stone-100 dark:hover:bg-zinc-700"
-                  >
-                    {shareLabel}
-                  </button>
-                )}
-                <button
-                  onClick={() => { setShowSettings(true); setShowHeaderMenu(false); }}
-                  className="w-full text-left px-3 py-2 text-sm text-stone-700 dark:text-zinc-300 hover:bg-stone-100 dark:hover:bg-zinc-700"
-                >
-                  AI Settings
-                </button>
-                <button
-                  onClick={() => { toggleTheme(); setShowHeaderMenu(false); }}
-                  className="w-full text-left px-3 py-2 text-sm text-stone-700 dark:text-zinc-300 hover:bg-stone-100 dark:hover:bg-zinc-700"
-                >
-                  {isDark ? 'Light mode' : 'Dark mode'}
-                </button>
-                <button
-                  onClick={() => { setBook(null); setResult(null); storedRef.current = null; seriesBaseRef.current = null; setShowHeaderMenu(false); }}
-                  className="w-full text-left px-3 py-2 text-sm text-stone-700 dark:text-zinc-300 hover:bg-stone-100 dark:hover:bg-zinc-700"
-                >
-                  Change book
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </header>
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Mobile sidebar backdrop */}
-        {sidebarOpen && (
-          <div
-            className="fixed inset-0 z-30 bg-black/60 lg:hidden"
-            onClick={() => setSidebarOpen(false)}
+      {/* WorkshopScreen — full-screen overlay */}
+      {showWorkshop && stored && (
+        <WorkshopScreen
+          book={book}
+          stored={stored}
+          result={result}
+          currentIndex={currentIndex}
+          onClose={() => setShowWorkshop(false)}
+          onChapterChange={handleChapterChange}
+          onAnalyze={handleAnalyze}
+          onCancelAnalyze={() => { analyzeCancelRef.current = true; }}
+          onRebuild={handleRebuild}
+          onCancelRebuild={() => { rebuildCancelRef.current = true; }}
+          onProcessBook={handleProcessBook}
+          onDeleteSnapshot={handleDeleteSnapshot}
+          onSetBookmark={handleSetBookmark}
+          onSetRange={setChapterRange}
+          analyzing={analyzing}
+          rebuilding={rebuilding}
+          rebuildProgress={rebuildProgress}
+          chapterRange={chapterRange}
+          snapshotIndices={snapshotIndices}
+          visibleChapterOrders={visibleChapterOrders}
+          isMetaOnly={isMetaOnly}
+          needsSetup={needsSetup}
+          onCompleteSetup={completeSetup}
+          derived={derived}
+          onResultEdit={applyResultEdit}
+          currentChapterIndex={currentChapterIndex}
+          onSaveSeries={handleSaveSeries}
+          onReextractTitles={handleReextractTitles}
+          savedBooks={listSavedBooks()}
+          onLoadBook={loadBookFromMeta}
+          onDeleteBook={(title, author) => { deleteBookState(title, author).catch(() => {}); }}
+          onImportFile={handleFile}
+          queue={queue}
+          onRemoveJob={(id) => setQueue((q) => q.filter((j) => j.id !== id))}
+          onCancelCurrentJob={() => { queueCancelRef.current = true; }}
+          onClearDone={() => setQueue((q) => q.filter((j) => j.status !== 'done' && j.status !== 'error'))}
+        />
+      )}
+
+      {/* ExploreHeader */}
+      <ExploreHeader
+        bookTitle={book.title}
+        currentChapterIndex={currentIndex}
+        totalChapters={book.chapters.length}
+        onChapterPillTap={() => {}}
+        onOpenWorkshop={() => setShowWorkshop(true)}
+        onOpenChat={() => setShowChat(true)}
+        onOpenSettings={() => setShowSettings(true)}
+        onChangeBook={() => { setBook(null); setResult(null); storedRef.current = null; seriesBaseRef.current = null; }}
+        onToggleTheme={toggleTheme}
+        isDark={isDark}
+        hasStoredState={hasStoredState}
+      />
+
+      {/* RecapStrip */}
+      {result?.summary && (
+        <RecapStrip summary={result.summary} onOpenTimeline={() => setShowTimeline(true)} />
+      )}
+
+      {/* Main scrollable content area */}
+      <div className="flex-1 overflow-y-auto p-4">
+        {/* Snapshot navigator */}
+        {stored && (
+          <SnapshotNav
+            snapshots={visibleSnapshots}
+            chapters={book.chapters}
+            viewingSnapshotIndex={viewingSnapshotIndex}
+            stored={stored}
+            onNavigate={(snapIdx, chIdx, res) => {
+              setViewingSnapshotIndex(snapIdx);
+              setCurrentIndex(chIdx);
+              setResult(res);
+              setSpoilerDismissedIndex(null);
+            }}
           />
         )}
 
-        <aside className={`
-          fixed inset-y-0 left-0 z-40 w-72 bg-white dark:bg-zinc-900 border-r border-stone-200 dark:border-zinc-800 p-4 overflow-y-auto
-          transform transition-transform duration-200 ease-in-out
-          lg:relative lg:w-64 lg:translate-x-0 lg:z-auto lg:flex-shrink-0
-          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        `}>
-          {/* Close button — mobile only */}
-          <button
-            onClick={() => setSidebarOpen(false)}
-            className="lg:hidden mb-3 ml-auto flex items-center gap-1.5 text-xs text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
-          >
-            Close ✕
-          </button>
-          <ChapterSelector
-            chapters={book.chapters}
-            currentIndex={currentIndex}
-            onChange={(i) => { handleChapterChange(i); setSidebarOpen(false); }}
-            onAnalyze={handleAnalyze}
-            onCancelAnalyze={() => { analyzeCancelRef.current = true; }}
-            onRebuild={handleRebuild}
-            onCancelRebuild={() => { rebuildCancelRef.current = true; }}
-            onProcessBook={handleProcessBook}
-            analyzing={analyzing}
-            rebuilding={rebuilding}
-            rebuildProgress={rebuildProgress}
-            lastAnalyzedIndex={stored?.lastAnalyzedIndex ?? null}
-            snapshotIndices={snapshotIndices}
-            visibleChapterOrders={visibleChapterOrders}
-            chapterRange={chapterRange}
-            onSetRange={setChapterRange}
-            onDeleteSnapshot={handleDeleteSnapshot}
-            readingBookmark={stored?.readingBookmark}
-            onSetBookmark={handleSetBookmark}
-            metaOnly={isMetaOnly}
-            needsSetup={needsSetup}
-            onCompleteSetup={completeSetup}
-          />
-          {analyzeError && <p className="mt-3 text-xs text-red-500 text-center">{analyzeError}</p>}
-          {saveError && (
-            <div className="mt-3 p-2 rounded-lg bg-red-500/10 border border-red-500/20">
-              <p className="text-xs text-red-400">{saveError}</p>
-              <button onClick={() => setSaveError(null)} className="text-xs text-red-300 underline mt-1">Dismiss</button>
-            </div>
-          )}
-        </aside>
-
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 flex flex-col">
-          {/* Prompt to upload EPUB when no chapter data is available */}
-          {isMetaOnly && book.chapters.length === 0 && (
-            <label
-              htmlFor="epub-reupload"
-              className="flex items-center gap-3 mb-4 px-4 py-3 bg-amber-950/40 border border-amber-800/50 rounded-xl cursor-pointer hover:bg-amber-950/60 transition-colors flex-shrink-0"
+        {/* Spoiler banner */}
+        {showSpoilerBanner && (
+          <div className="mb-4 flex items-center gap-3 px-4 py-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex-shrink-0">
+            <span className="text-amber-500 text-sm flex-shrink-0">&#9888;</span>
+            <p className="flex-1 text-sm text-ink-soft">
+              Chapter {currentIndex + 1} is past your bookmark (Ch. {effectiveBookmark + 1}).
+            </p>
+            <button
+              onClick={handleDismissSpoiler}
+              className="flex-shrink-0 px-3 py-1 text-xs font-medium bg-amber-500/20 hover:bg-amber-500/30 text-amber-600 dark:text-amber-400 rounded-lg transition-colors"
             >
-              <span className="text-amber-400 text-lg flex-shrink-0">📂</span>
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-amber-300">Upload EPUB to enable analysis</p>
-                <p className="text-xs text-amber-600 mt-0.5">This book was imported without chapter data. Tap to select the EPUB file.</p>
-              </div>
-              <input
-                id="epub-reupload"
-                type="file"
-                accept=".epub"
-                className="sr-only"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }}
-              />
-            </label>
-          )}
-          {/* Tab bar — always visible */}
-          <div className="flex rounded-lg overflow-hidden border border-stone-200 dark:border-zinc-800 mb-5 w-full sm:w-fit flex-shrink-0">
-            {([
-              { key: 'characters', label: 'Characters' },
-              { key: 'locations', label: 'Locations' },
-              { key: 'map', label: 'Map' },
-              { key: 'arcs', label: 'Arcs' },
-              { key: 'manage', label: 'Manage', separated: true },
-            ] as { key: MainTab; label: string; separated?: boolean }[]).map(({ key, label, separated }) => (
-              <button
-                key={key}
-                onClick={() => setTab(key)}
-                className={`flex-1 sm:flex-none px-4 sm:px-5 py-2.5 sm:py-2 text-sm font-medium transition-colors ${
-                  separated ? 'border-l border-stone-200 dark:border-zinc-700' : ''
-                } ${
-                  tab === key ? 'bg-stone-200 dark:bg-zinc-700 text-stone-900 dark:text-zinc-100' : 'bg-transparent text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+              Show anyway
+            </button>
           </div>
+        )}
 
-          {/* Snapshot navigator — shown on all tabs when snapshots exist */}
-          {(stored?.snapshots?.length ?? 0) > 0 && (() => {
-            const snaps = [...(stored!.snapshots)].sort((a, b) => a.index - b.index);
-            const pos = viewingSnapshotIndex === null
-              ? snaps.length - 1  // latest
-              : snaps.findIndex((s) => s.index === viewingSnapshotIndex);
-            const atLatest = viewingSnapshotIndex === null || pos === snaps.length - 1;
-            const snap = snaps[pos];
-            const chTitle = normalizeTitle(book.chapters[snap?.index]?.title ?? `Chapter ${(snap?.index ?? 0) + 1}`);
-            function goTo(newPos: number) {
-              const target = snaps[newPos];
-              const bookmark = Math.min(
-                storedRef.current?.readingBookmark ?? stored!.lastAnalyzedIndex,
-                stored!.lastAnalyzedIndex,
-              );
-              const targetIndex = newPos === snaps.length - 1 ? stored!.lastAnalyzedIndex : target.index;
+        {/* Empty state */}
+        {!result && !busy && !rebuildProgress && (
+          <div className="flex flex-col items-center justify-center flex-1 text-center gap-3">
+            <span className="text-5xl opacity-20">{isSeriesContinuation ? '📚' : '⌖'}</span>
+            <p className="text-ink-soft font-medium">
+              {isSeriesContinuation
+                ? 'Series characters loaded. Select a chapter and update.'
+                : 'Select your chapter and analyze.'}
+            </p>
+            <p className="text-sm text-ink-dim max-w-xs">
+              {isSeriesContinuation
+                ? 'Only new chapters will be read — your existing characters carry forward.'
+                : "Only what you've read is sent to the model — no spoilers."}
+            </p>
+          </div>
+        )}
 
-              if (targetIndex > bookmark) {
-                // Beyond bookmark — move sidebar position but don't load data
-                setCurrentIndex(targetIndex);
-                setSpoilerDismissedIndex(null);
-                return;
-              }
+        {/* Setup prompt */}
+        {showSetupPrompt && (
+          <SetupPrompt
+            onComplete={() => { setShowSetupPrompt(false); handleAnalyze(); }}
+            onOpenSettings={() => { setShowSetupPrompt(false); setShowSettings(true); }}
+          />
+        )}
 
-              setSpoilerDismissedIndex(null);
-              if (newPos === snaps.length - 1) {
-                setCurrentIndex(stored!.lastAnalyzedIndex);
-                setResult(stored!.result);
-                setViewingSnapshotIndex(null);
-              } else {
-                setCurrentIndex(target.index);
-                setResult(target.result);
-                setViewingSnapshotIndex(target.index);
-              }
-            }
-            return (
-              <div className="mb-4 flex items-center gap-1 px-2 py-1.5 bg-stone-100/50 dark:bg-zinc-800/50 rounded-xl border border-stone-300/40 dark:border-zinc-700/40 flex-shrink-0">
-                <button
-                  onClick={() => goTo(Math.max(0, pos - 1))}
-                  disabled={pos <= 0 || playing}
-                  className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-base text-stone-500 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100 hover:bg-stone-200 dark:hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-default transition-colors"
-                  title="Previous snapshot"
-                >‹</button>
-                <span className="flex-1 text-center truncate px-1">
-                  {atLatest
-                    ? <><span className="text-sm font-semibold text-stone-800 dark:text-zinc-100">ch.{(snap?.index ?? 0) + 1} — {chTitle}</span> <span className="text-xs text-stone-400 dark:text-zinc-500">(latest)</span></>
-                    : <><span className="text-xs text-stone-400 dark:text-zinc-500">Viewing </span><span className="text-sm font-semibold text-stone-800 dark:text-zinc-100">ch.{snap.index + 1} — {chTitle}</span> <span className="text-xs text-stone-400 dark:text-zinc-500">({pos + 1}/{snaps.length})</span></>
-                  }
-                </span>
-                <button
-                  onClick={() => goTo(Math.min(snaps.length - 1, pos + 1))}
-                  disabled={atLatest || playing}
-                  className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-base text-stone-500 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100 hover:bg-stone-200 dark:hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-default transition-colors"
-                  title="Next snapshot"
-                >›</button>
-                <div className="w-px h-4 bg-stone-300 dark:bg-zinc-700 mx-1" />
-                {/* Speed selector */}
-                <select
-                  value={playSpeed}
-                  onChange={(e) => setPlaySpeed(Number(e.target.value))}
-                  className="text-xs bg-transparent text-stone-400 dark:text-zinc-500 border-none outline-none cursor-pointer hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
-                  title="Playback speed"
-                >
-                  <option value={3000}>Slow</option>
-                  <option value={2000}>Normal</option>
-                  <option value={1000}>Fast</option>
-                  <option value={400}>Very fast</option>
-                </select>
-                {/* Play / pause */}
-                <button
-                  onClick={() => {
-                    if (playing) { setPlaying(false); return; }
-                    // If at the end, rewind to start first
-                    if (atLatest && snaps.length > 1) goTo(0);
-                    setPlaying(true);
-                  }}
-                  className="text-stone-500 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100 transition-colors w-6 h-6 flex items-center justify-center rounded-md hover:bg-stone-200 dark:hover:bg-zinc-700"
-                  title={playing ? 'Pause' : 'Play through chapters'}
-                >
-                  {playing
-                    ? <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor"><rect x="0" y="0" width="3" height="12"/><rect x="7" y="0" width="3" height="12"/></svg>
-                    : <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor"><polygon points="0,0 10,6 0,12"/></svg>
-                  }
-                </button>
-              </div>
-            );
-          })()}
-
-          {showSpoilerBanner && (
-            <div className="mb-4 flex items-center gap-3 px-4 py-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex-shrink-0">
-              <span className="text-amber-500 text-sm flex-shrink-0">&#9888;</span>
-              <p className="flex-1 text-sm text-stone-600 dark:text-zinc-400">
-                Chapter {currentIndex + 1} is past your bookmark (Ch. {effectiveBookmark + 1}).
-              </p>
-              <button
-                onClick={handleDismissSpoiler}
-                className="flex-shrink-0 px-3 py-1 text-xs font-medium bg-amber-500/20 hover:bg-amber-500/30 text-amber-600 dark:text-amber-400 rounded-lg transition-colors"
-              >
-                Show anyway
-              </button>
-            </div>
-          )}
-
-          {/* Map tab — always accessible, fills remaining height */}
-          {tab === 'map' && (
-            <div className="flex-1 min-h-0 flex flex-col">
-              {result?.summary && (
-                <div className="mx-0 mb-3 p-4 bg-stone-50 dark:bg-zinc-900 rounded-xl border border-stone-200 dark:border-zinc-800 flex-shrink-0 cursor-pointer hover:border-stone-300 dark:hover:border-zinc-700 transition-colors" onClick={() => setShowTimeline(true)}>
-                  <p className="text-xs font-medium text-stone-400 dark:text-zinc-600 uppercase tracking-wider mb-2">Story so far</p>
-                  <p className="text-sm text-stone-500 dark:text-zinc-400 leading-relaxed">{result.summary}</p>
+        {/* Progress indicator */}
+        {(analyzing || rebuilding) && rebuildProgress && (
+          <div className={`mb-4 rounded-xl border px-4 py-3 ${rebuilding ? 'border-violet-500/20 bg-violet-500/5' : 'border-amber-500/20 bg-amber-500/5'}`}>
+            <div className="flex items-center gap-3">
+              <div className={`w-3.5 h-3.5 border-2 border-t-transparent rounded-full animate-spin flex-shrink-0 ${rebuilding ? 'border-violet-500' : 'border-amber-500'}`} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-ink truncate">
+                    {rebuilding ? 'Rebuilding' : 'Analyzing'} · {rebuildProgress.current}/{rebuildProgress.total}
+                    {rebuildProgress.chapterTitle && (
+                      <span className="ml-2 font-normal text-ink-soft">
+                        {rebuildProgress.chapterTitle}
+                      </span>
+                    )}
+                  </p>
+                  <button
+                    onClick={() => { if (rebuilding) rebuildCancelRef.current = true; else analyzeCancelRef.current = true; }}
+                    className="flex-shrink-0 text-xs text-ink-dim hover:text-red-400 dark:hover:text-red-500 transition-colors"
+                  >
+                    Cancel
+                  </button>
                 </div>
-              )}
-              <div className="flex-1 min-h-0">
+                <div className="mt-2 w-full bg-paper-dark rounded-full h-0.5">
+                  <div
+                    className={`h-0.5 rounded-full transition-all duration-300 ${rebuilding ? 'bg-violet-500' : 'bg-amber-500'}`}
+                    style={{ width: `${(rebuildProgress.current / rebuildProgress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tab content */}
+        {result && (
+          <div>
+            {tab === 'characters' && (
+              <>
+                <div className="flex flex-wrap items-center gap-2 mb-4">
+                  <input
+                    type="search"
+                    placeholder="Search..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="bg-paper border border-border rounded-lg px-3 py-2 text-sm text-ink placeholder-ink-dim font-serif focus:outline-none focus:border-rust min-w-36 flex-1"
+                  />
+                  <div className="flex gap-1.5 flex-wrap">
+                    {(['all', 'main', 'secondary', 'minor'] as const).map((f) => (
+                      <button
+                        key={f}
+                        onClick={() => setFilter(f)}
+                        className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                          filter === f ? 'bg-rust/10 text-rust' : 'text-ink-soft border border-border hover:border-rust/30'
+                        }`}
+                      >
+                        {f.charAt(0).toUpperCase() + f.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {displayed.map((character) => (
+                    <NewCharacterCard
+                      key={character.name}
+                      character={character}
+                      snapshots={visibleSnapshots}
+                      chapterTitles={book.chapters.map((ch) => ch.title)}
+                      currentResult={result}
+                      onResultEdit={applyResultEdit}
+                      currentChapterIndex={currentChapterIndex}
+                      onChapterJump={handleChapterChange}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+
+            {tab === 'locations' && result?.locations && (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {result.locations.map((location) => (
+                  <NewLocationCard
+                    key={location.name}
+                    location={location}
+                    characters={characters}
+                    isCurrentChapter={false}
+                    snapshots={visibleSnapshots}
+                    chapterTitles={book.chapters.map((ch) => ch.title)}
+                    currentResult={result}
+                    onResultEdit={applyResultEdit}
+                    currentChapterIndex={currentChapterIndex}
+                  />
+                ))}
+              </div>
+            )}
+
+            {tab === 'arcs' && result?.arcs && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {result.arcs.map((arc) => (
+                  <ArcCard
+                    key={arc.name}
+                    arc={arc}
+                    snapshots={visibleSnapshots}
+                    chapterTitles={book.chapters.map((ch) => ch.title)}
+                    currentResult={result}
+                    onResultEdit={applyResultEdit}
+                    currentChapterIndex={currentChapterIndex}
+                  />
+                ))}
+              </div>
+            )}
+
+            {tab === 'map' && (
+              <div className="flex-1 min-h-0 flex flex-col">
                 <MapBoard
                   characters={characters}
                   arcs={result?.arcs}
@@ -2167,235 +2031,24 @@ export default function Home() {
                   }}
                 />
               </div>
-            </div>
-          )}
-
-          {/* Characters + Locations tabs */}
-          {tab !== 'map' && (
-            <>
-
-              {!result && !busy && !rebuildProgress && (
-                <div className="flex flex-col items-center justify-center flex-1 text-center gap-3">
-                  <span className="text-5xl opacity-20">{isSeriesContinuation ? '📚' : '⌖'}</span>
-                  <p className="text-stone-500 dark:text-zinc-400 font-medium">
-                    {isSeriesContinuation
-                      ? 'Series characters loaded. Select a chapter and update.'
-                      : 'Select your chapter and analyze.'}
-                  </p>
-                  <p className="text-sm text-stone-400 dark:text-zinc-600 max-w-xs">
-                    {isSeriesContinuation
-                      ? 'Only new chapters will be read — your existing characters carry forward.'
-                      : "Only what you've read is sent to the model — no spoilers."}
-                  </p>
-                </div>
-              )}
-
-              {showSetupPrompt && (
-                <SetupPrompt
-                  onComplete={() => { setShowSetupPrompt(false); handleAnalyze(); }}
-                  onOpenSettings={() => { setShowSetupPrompt(false); setShowSettings(true); }}
-                />
-              )}
-
-              {(analyzing || rebuilding) && rebuildProgress && (
-                <div className={`mb-4 rounded-xl border px-4 py-3 ${rebuilding ? 'border-violet-500/20 bg-violet-500/5' : 'border-amber-500/20 bg-amber-500/5'}`}>
-                  <div className="flex items-center gap-3">
-                    <div className={`w-3.5 h-3.5 border-2 border-t-transparent rounded-full animate-spin flex-shrink-0 ${rebuilding ? 'border-violet-500' : 'border-amber-500'}`} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-medium text-stone-700 dark:text-zinc-300 truncate">
-                          {rebuilding ? 'Rebuilding' : 'Analyzing'} · {rebuildProgress.current}/{rebuildProgress.total}
-                          {rebuildProgress.chapterTitle && (
-                            <span className="ml-2 font-normal text-stone-400 dark:text-zinc-500">
-                              {rebuildProgress.chapterTitle}
-                            </span>
-                          )}
-                        </p>
-                        <button
-                          onClick={() => { if (rebuilding) rebuildCancelRef.current = true; else analyzeCancelRef.current = true; }}
-                          className="flex-shrink-0 text-xs text-stone-400 dark:text-zinc-600 hover:text-red-400 dark:hover:text-red-500 transition-colors"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                      <div className="mt-2 w-full bg-stone-200 dark:bg-zinc-800 rounded-full h-0.5">
-                        <div
-                          className={`h-0.5 rounded-full transition-all duration-300 ${rebuilding ? 'bg-violet-500' : 'bg-amber-500'}`}
-                          style={{ width: `${(rebuildProgress.current / rebuildProgress.total) * 100}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {result && (
-                <div>
-                  {result.summary && (
-                    <div className="mb-5 p-4 bg-stone-50 dark:bg-zinc-900 rounded-xl border border-stone-200 dark:border-zinc-800 cursor-pointer hover:border-stone-300 dark:hover:border-zinc-700 transition-colors" onClick={() => setShowTimeline(true)}>
-                      <p className="text-xs font-medium text-stone-400 dark:text-zinc-600 uppercase tracking-wider mb-2">Story so far</p>
-                      <p className="text-sm text-stone-500 dark:text-zinc-400 leading-relaxed">{result.summary}</p>
-                    </div>
-                  )}
-
-                  {tab === 'characters' && (
-                    <>
-                      <div className="flex flex-wrap items-center gap-2 mb-4">
-                        <input
-                          type="search"
-                          placeholder="Search…"
-                          value={search}
-                          onChange={(e) => setSearch(e.target.value)}
-                          className="bg-white dark:bg-zinc-900 border border-stone-200 dark:border-zinc-800 rounded-lg px-3 py-2 text-sm text-stone-700 dark:text-zinc-300 placeholder-stone-400 dark:placeholder-zinc-600 focus:outline-none focus:border-stone-400 dark:focus:border-zinc-600 min-w-36 flex-1"
-                        />
-                        <div className="flex gap-1.5 flex-wrap">
-                          {(['all', 'main', 'secondary', 'minor'] as const).map((f) => (
-                            <button
-                              key={f}
-                              onClick={() => setFilter(f)}
-                              className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-                                filter === f
-                                  ? 'bg-stone-200 dark:bg-zinc-700 text-stone-900 dark:text-zinc-100'
-                                  : 'text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 border border-stone-200 dark:border-zinc-800 hover:border-stone-300 dark:hover:border-zinc-700'
-                              }`}
-                            >
-                              {f.charAt(0).toUpperCase() + f.slice(1)}
-                            </button>
-                          ))}
-                        </div>
-                        <select
-                          value={sortKey}
-                          onChange={(e) => setSortKey(e.target.value as SortKey)}
-                          className="bg-white dark:bg-zinc-900 border border-stone-200 dark:border-zinc-800 rounded-lg px-3 py-2 text-xs text-stone-400 dark:text-zinc-500 focus:outline-none focus:border-stone-400 dark:focus:border-zinc-600"
-                        >
-                          <option value="importance">Importance</option>
-                          <option value="name">Name</option>
-                          <option value="status">Status</option>
-                        </select>
-                      </div>
-
-                      <div className="flex gap-4 mb-4 text-xs text-stone-400 dark:text-zinc-600">
-                        <span>{characters.length} characters</span>
-                        <span>·</span>
-                        <span>{characters.filter((c) => c.status === 'alive').length} alive</span>
-                        <span>·</span>
-                        <span>{characters.filter((c) => c.status === 'dead').length} dead</span>
-                        <span>·</span>
-                        <span>{characters.filter((c) => c.importance === 'main').length} main</span>
-                      </div>
-
-                      {displayed.length === 0 ? (
-                        <p className="text-center text-stone-400 dark:text-zinc-600 py-12">No characters match.</p>
-                      ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                          {displayed.map((character) => (
-                            <CharacterCard
-                              key={character.name}
-                              character={character}
-                              snapshots={visibleSnapshots}
-                              chapterTitles={book.chapters.map((ch) => ch.title)}
-                              currentResult={result}
-                              onResultEdit={applyResultEdit}
-                              currentChapterIndex={currentChapterIndex}
-                              onChapterJump={handleChapterChange}
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  {tab === 'locations' && (
-                    <LocationBoard
-                      characters={characters}
-                      locations={result.locations}
-                      bookTitle={book.title}
-                      snapshots={visibleSnapshots}
-                      chapterTitles={book.chapters.map((ch) => ch.title)}
-                      currentResult={result}
-                      onResultEdit={applyResultEdit}
-                      resolvedCharacters={derived.resolvedCharacters}
-                      locationAliasMap={derived.locationAliasMap}
-                      locationGroups={derived.locationGroups}
-                      currentChapterIndex={currentChapterIndex}
-                    />
-                  )}
-
-                  {tab === 'arcs' && (
-                    <ArcsPanel
-                      arcs={result.arcs ?? []}
-                      snapshots={visibleSnapshots}
-                      chapterTitles={book.chapters.map((ch) => ch.title)}
-                      currentResult={result}
-                      onResultEdit={applyResultEdit}
-                      arcChapterMap={derived.arcChapterMap}
-                      currentChapterIndex={currentChapterIndex}
-                      parentArcs={storedRef.current?.series
-                        ? getActiveParentArcs(storedRef.current.series, bookFilter, storedRef.current?.parentArcs)
-                        : storedRef.current?.parentArcs}
-                      onUpdateParentArcs={handleUpdateParentArcs}
-                      staleBooks={storedRef.current?.series ? getStaleBooks(storedRef.current.series).map((b) => b.title) : undefined}
-                      onRegroupArcs={async () => {
-                        if (!book || !storedRef.current) return;
-                        const rEnd = chapterRange?.end ?? (book.chapters.length - 1);
-                        const withParents = await maybeGenerateParentArcs(storedRef.current, book.title, book.author, rEnd, false);
-                        storedRef.current = withParents;
-                        persistState(book.title, book.author, withParents);
-                        setParentArcsRev((r) => r + 1);
-                      }}
-                    />
-                  )}
-
-                  {tab === 'manage' && storedRef.current?.series && storedRef.current.series.books.length > 1 && (
-                    <button
-                      onClick={() => { setBookStructureMode('manage'); setShowBookStructureEditor(true); }}
-                      className="mb-4 px-4 py-2 rounded-xl border border-stone-200 dark:border-zinc-700 text-sm text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-200 hover:border-stone-400 dark:hover:border-zinc-500 transition-colors w-full text-left"
-                    >
-                      Edit Book Structure
-                      <span className="text-xs text-stone-400 dark:text-zinc-500 ml-2">
-                        {storedRef.current.series.books.length} books
-                      </span>
-                    </button>
-                  )}
-                  {storedRef.current?.series && getStaleBooks(storedRef.current.series).length > 0 && (
-                    <div className="mb-4 px-4 py-3 rounded-xl border border-amber-300/50 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 flex items-center justify-between gap-3">
-                      <p className="text-xs text-amber-700 dark:text-amber-400">
-                        Book structure changed for {getStaleBooks(storedRef.current.series).map((b) => b.title).join(', ')}. Arc groupings may be outdated.
-                      </p>
-                      <button
-                        onClick={async () => {
-                          if (!book || !storedRef.current) return;
-                          const rEnd = chapterRange?.end ?? (book.chapters.length - 1);
-                          const withParents = await maybeGenerateParentArcs(storedRef.current, book.title, book.author, rEnd, false);
-                          storedRef.current = withParents;
-                          persistState(book.title, book.author, withParents);
-                          setParentArcsRev((r) => r + 1);
-                        }}
-                        className="flex-shrink-0 text-xs font-medium text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300 transition-colors"
-                      >
-                        Re-group arcs
-                      </button>
-                    </div>
-                  )}
-
-                  {tab === 'manage' && stored && result && (
-                    <EntityManager
-                      snapshots={stored.snapshots}
-                      currentResult={stored.result}
-                      chapterTitles={book.chapters.map((ch) => ch.title)}
-                      onResultEdit={applyResultEdit}
-                      aggregated={derived.aggregated}
-                      bookTitle={book.title}
-                      bookAuthor={book.author}
-                      currentChapterIndex={currentChapterIndex}
-                    />
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* PullUpSheet — bottom chapter navigation */}
+      <PullUpSheet
+        chapters={book.chapters}
+        currentIndex={currentIndex}
+        snapshots={visibleSnapshots}
+        onChapterSelect={(i) => handleChapterChange(i)}
+        visibleChapterOrders={visibleChapterOrders}
+      />
+
+      {/* BottomNav — 4-tab bar */}
+      <BottomNav activeTab={tab} onChange={setTab} />
+
+      {/* ChatPanel, SearchFAB, SearchSheet, search entity modals — unchanged */}
       {showChat && result && stored && stored.lastAnalyzedIndex >= 0 && (
         <ChatPanel
           bookTitle={book.title}
@@ -2409,7 +2062,6 @@ export default function Home() {
           onClose={() => setShowChat(false)}
         />
       )}
-      {/* Global entity search */}
       {result && stored && !showSearch && !searchEntity && (
         <SearchFAB onClick={() => setShowSearch(true)} />
       )}
@@ -2423,7 +2075,6 @@ export default function Home() {
           arcs={derived.aggregated.arcs}
         />
       )}
-      {/* Modals opened from search */}
       {searchEntity?.type === 'character' && (() => {
         let char = result?.characters.find((c) => c.name === searchEntity.name);
         if (!char) {
