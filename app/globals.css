@@ -81,12 +81,8 @@ button, a, label, [role="button"] {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #d6d3d1;
+  background: var(--border);
   border-radius: 2px;
-}
-
-html.dark ::-webkit-scrollbar-thumb {
-  background: #3f3f46;
 }
 
 .scrollbar-none {
