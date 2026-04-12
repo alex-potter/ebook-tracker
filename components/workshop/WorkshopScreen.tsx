@@ -46,7 +46,7 @@ interface WorkshopScreenProps {
 
   // Structure tab
   onSaveSeries: (series: SeriesDefinition) => void;
-  onReextractTitles: () => Promise<void>;
+  onReextractTitles: (chapterOrders: number[]) => Promise<Map<number, { title: string; preview?: string }>>;
 
   // Library tab
   savedBooks: Array<{ title: string; author: string; lastAnalyzedIndex: number; chapterCount?: number }>;
