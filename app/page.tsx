@@ -576,6 +576,105 @@ export default function Home() {
     storedRef.current = updated;
     persistState(book.title, book.author, updated);
     setShowBookStructureEditor(false);
+    setLockedBookIndices(undefined);
+  }
+
+  async function handleAppendToSeries(existingTitle: string, existingAuthor: string) {
+    if (!pendingBook) return;
+    const existing = await loadBookState(existingTitle, existingAuthor);
+    if (!existing?.container || !existing.bookMeta) return;
+
+    const maxOrder = Math.max(...existing.bookMeta.chapters.map((ch) => ch.order));
+    const offset = maxOrder + 1;
+
+    // Rebase new EPUB's chapters
+    const rebasedMeta = pendingBook.chapters.map((ch) => ({
+      id: ch.id,
+      title: ch.title,
+      order: ch.order + offset,
+      bookIndex: (ch.bookIndex ?? 0) + existing.container.books.length,
+      bookTitle: ch.bookTitle,
+      preview: ch.preview,
+      contentType: ch.contentType,
+    }));
+
+    // Merge bookMeta
+    const mergedBookMeta: BookMeta = {
+      chapters: [...existing.bookMeta.chapters, ...rebasedMeta],
+      books: [...(existing.bookMeta.books ?? []), ...pendingBook.books],
+    };
+
+    // Build container for new books using rebasedMeta
+    const chapterTexts = new Map<number, { title: string; text: string }>();
+    for (const ch of pendingBook.chapters) {
+      chapterTexts.set(ch.order + offset, { title: ch.title, text: ch.text });
+    }
+    const newBookMeta: BookMeta = {
+      chapters: rebasedMeta,
+      books: pendingBook.books,
+    };
+    const newContainer = buildContainer(newBookMeta, detectChapterRange, chapterTexts, pendingBook.title);
+
+    // Reindex new books to continue from existing
+    const reindexedNewBooks = newContainer.books.map((b, i) => ({
+      ...b,
+      index: existing.container.books.length + i,
+    }));
+
+    const mergedContainer: BookContainer = {
+      books: [...existing.container.books, ...reindexedNewBooks],
+      seriesArcs: existing.container.seriesArcs,
+      unassignedChapters: [
+        ...existing.container.unassignedChapters,
+        ...newContainer.unassignedChapters,
+      ],
+    };
+
+    // Save chapter texts for new book
+    const chaptersWithText = pendingBook.chapters.filter((ch) => ch.text).map((ch) => ({
+      id: ch.id,
+      text: ch.text,
+      htmlHead: (ch as unknown as Record<string, string>)._htmlHead,
+    }));
+    if (chaptersWithText.length > 0) {
+      await saveChapters(existingTitle, existingAuthor, chaptersWithText).catch(() => {});
+    }
+
+    // Prompt for series title if going from 1 to 2+ books
+    let seriesTitle = existingTitle;
+    const seriesAuthor = existingAuthor;
+    if (existing.container.books.length === 1) {
+      const suggested = `${existingTitle} series`;
+      const userTitle = prompt('Name this series:', suggested);
+      if (userTitle?.trim()) seriesTitle = userTitle.trim();
+    }
+
+    const updatedState: StoredBookState = {
+      ...existing,
+      bookMeta: mergedBookMeta,
+      container: mergedContainer,
+    };
+
+    // If title changed (series rename), save under new key and delete old
+    if (seriesTitle !== existingTitle) {
+      await saveBookState(seriesTitle, seriesAuthor, updatedState);
+      await deleteBookState(existingTitle, existingAuthor).catch(() => {});
+    } else {
+      await saveBookState(existingTitle, existingAuthor, updatedState);
+    }
+
+    // Clear pending state
+    setPendingBook(null);
+    setSeriesOptions([]);
+
+    // Reload the merged book
+    await loadBookFromMeta(seriesTitle, seriesAuthor);
+
+    // Show editor scoped to new books
+    const lockedIndices = new Set(existing.container.books.map((b) => b.index));
+    setLockedBookIndices(lockedIndices);
+    setBookStructureMode('setup');
+    setShowBookStructureEditor(true);
   }
 
   async function handleReextractTitles(
@@ -661,6 +760,7 @@ export default function Home() {
   const [bookmarkModalMode, setBookmarkModalMode] = useState<'import' | 'update'>('update');
   const [showBookStructureEditor, setShowBookStructureEditor] = useState(false);
   const [bookStructureMode, setBookStructureMode] = useState<'setup' | 'manage'>('setup');
+  const [lockedBookIndices, setLockedBookIndices] = useState<Set<number> | undefined>(undefined);
   const [bookFilter, setBookFilter] = useState<BookFilter>({ mode: 'all' });
   const [showSearch, setShowSearch] = useState(false);
   const [searchEntity, setSearchEntity] = useState<{ type: 'character' | 'location' | 'arc'; name: string } | null>(null);
@@ -1418,7 +1518,8 @@ export default function Home() {
         <SeriesPicker
           newBookTitle={pendingBook.title}
           newBookAuthor={pendingBook.author}
-          savedBooks={seriesOptions}
+          savedBooks={seriesOptions.map((b) => ({ ...b, hasContainer: true }))}
+          onAppendToSeries={handleAppendToSeries}
           onContinueFrom={handleContinueFrom}
           onStartFresh={handleStartFresh}
         />
@@ -1673,9 +1774,10 @@ export default function Home() {
           chapters={book.chapters.map(({ order, title, bookIndex, preview, contentType }) =>
             ({ order, title, bookIndex, preview, contentType }))}
           onSave={handleSaveContainer}
-          onClose={() => setShowBookStructureEditor(false)}
+          onClose={() => { setShowBookStructureEditor(false); setLockedBookIndices(undefined); }}
           mode={bookStructureMode}
           onReextract={handleReextractTitles}
+          lockedBookIndices={lockedBookIndices}
         />
       )}
       {showBookmarkModal && book && (
