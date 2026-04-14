@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import type { SeriesDefinition, BookDefinition } from '@/types';
+import type { BookContainer, BookDefinition } from '@/types';
+import { mergeToSingleBook } from '@/lib/series';
 
 interface Props {
-  series: SeriesDefinition;
+  container: BookContainer;
   chapters: Array<{
     order: number;
     title: string;
@@ -12,14 +13,15 @@ interface Props {
     preview?: string;
     contentType?: 'story' | 'front-matter' | 'back-matter' | 'structural';
   }>;
-  onSave: (series: SeriesDefinition) => void;
+  onSave: (container: BookContainer) => void;
   onClose: () => void;
   mode: 'setup' | 'manage';
   onReextract?: (chapterOrders: number[]) => Promise<Map<number, { title: string; preview?: string }>>;
+  lockedBookIndices?: Set<number>;
 }
 
-export default function BookStructureEditor({ series, chapters, onSave, onClose, mode, onReextract }: Props) {
-  const [books, setBooks] = useState<BookDefinition[]>(() => [...series.books].sort((a, b) => a.index - b.index));
+export default function BookStructureEditor({ container, chapters, onSave, onClose, mode, onReextract, lockedBookIndices }: Props) {
+  const [books, setBooks] = useState<BookDefinition[]>(() => [...container.books].sort((a, b) => a.index - b.index));
   const [editingTitle, setEditingTitle] = useState<number | null>(null);
   const [expandedBook, setExpandedBook] = useState<number | null>(null);
   const [splitMode, setSplitMode] = useState<number | null>(null); // bookIndex being split
@@ -45,6 +47,14 @@ export default function BookStructureEditor({ series, chapters, onSave, onClose,
     return localChapters.find((c) => c.order === order)?.preview ?? null;
   }
 
+  function handleMergeAll() {
+    const merged = mergeToSingleBook(
+      { books, unassignedChapters: unassigned.map((ch) => ch.order) },
+      books[0]?.title,
+    );
+    setBooks(merged.books);
+  }
+
   function handleConfirmAll() {
     const confirmed = books.map((b) => {
       const nonStoryOrders: number[] = [];
@@ -61,7 +71,7 @@ export default function BookStructureEditor({ series, chapters, onSave, onClose,
       };
     });
     setBooks(confirmed);
-    onSave({ ...series, books: confirmed, unassignedChapters: unassigned.map((ch) => ch.order) });
+    onSave({ ...container, books: confirmed, unassignedChapters: unassigned.map((ch) => ch.order) });
   }
 
   function handleUpdateBook(index: number, updates: Partial<BookDefinition>) {
@@ -240,7 +250,7 @@ export default function BookStructureEditor({ series, chapters, onSave, onClose,
       for (let o = b.chapterStart; o <= b.chapterEnd; o++) assignedSet.add(o);
     }
     const newUnassigned = localChapters.filter((ch) => !assignedSet.has(ch.order)).map((ch) => ch.order);
-    onSave({ ...series, books: reindexed, unassignedChapters: newUnassigned });
+    onSave({ ...container, books: reindexed, unassignedChapters: newUnassigned });
   }
 
   return (
@@ -253,7 +263,9 @@ export default function BookStructureEditor({ series, chapters, onSave, onClose,
         <div className="flex items-center justify-between p-5 pb-3 border-b border-stone-200 dark:border-zinc-800">
           <div>
             <h2 className="font-bold text-stone-900 dark:text-zinc-100 text-base">
-              {mode === 'setup' ? 'Confirm Book Structure' : 'Edit Book Structure'}
+              {mode === 'setup'
+                ? (books.length > 1 ? 'Confirm Series Structure' : 'Confirm Book Structure')
+                : (books.length > 1 ? 'Edit Series Structure' : 'Edit Book Structure')}
             </h2>
             <p className="text-xs text-stone-500 dark:text-zinc-500 mt-0.5">
               {books.length} book{books.length !== 1 ? 's' : ''} detected · {unassigned.length} unassigned chapter{unassigned.length !== 1 ? 's' : ''}
@@ -269,25 +281,36 @@ export default function BookStructureEditor({ series, chapters, onSave, onClose,
 
         {/* Book List */}
         <div className="flex-1 overflow-y-auto p-5 space-y-3">
+          {books.length > 1 && (
+            <button
+              onClick={handleMergeAll}
+              className="w-full py-2.5 rounded-xl border border-amber-500/50 text-amber-500 text-sm font-medium hover:bg-amber-500/10 transition-colors"
+            >
+              Treat as single book
+            </button>
+          )}
           {[...books].sort((a, b) => a.chapterStart - b.chapterStart).map((book) => {
             const chapterCount = book.chapterEnd - book.chapterStart + 1 - book.excludedChapters.length;
             const isExpanded = expandedBook === book.index;
+            const isLocked = lockedBookIndices?.has(book.index) ?? false;
 
             return (
               <div key={book.index} className="border border-stone-200 dark:border-zinc-800 rounded-xl overflow-hidden">
                 {/* Book Header */}
                 <div
-                  className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-stone-50 dark:hover:bg-zinc-800/50 transition-colors"
-                  onClick={() => setExpandedBook(isExpanded ? null : book.index)}
+                  className={`flex items-center gap-3 px-4 py-3 transition-colors ${isLocked ? 'opacity-60' : 'cursor-pointer hover:bg-stone-50 dark:hover:bg-zinc-800/50'}`}
+                  onClick={() => { if (!isLocked) setExpandedBook(isExpanded ? null : book.index); }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={!book.excluded}
-                    onChange={(e) => { e.stopPropagation(); handleUpdateBook(book.index, { excluded: !book.excluded }); }}
-                    onClick={(e) => e.stopPropagation()}
-                    className="rounded border-stone-300 dark:border-zinc-600 text-amber-500 focus:ring-amber-500/30 flex-shrink-0"
-                    title={book.excluded ? 'Include this book' : 'Exclude this book'}
-                  />
+                  {!isLocked && (
+                    <input
+                      type="checkbox"
+                      checked={!book.excluded}
+                      onChange={(e) => { e.stopPropagation(); handleUpdateBook(book.index, { excluded: !book.excluded }); }}
+                      onClick={(e) => e.stopPropagation()}
+                      className="rounded border-stone-300 dark:border-zinc-600 text-amber-500 focus:ring-amber-500/30 flex-shrink-0"
+                      title={book.excluded ? 'Include this book' : 'Exclude this book'}
+                    />
+                  )}
                   <svg
                     className={`w-3 h-3 text-stone-400 dark:text-zinc-500 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
                     viewBox="0 0 6 10" fill="currentColor"
@@ -318,13 +341,15 @@ export default function BookStructureEditor({ series, chapters, onSave, onClose,
                       <span className="ml-2">&middot; {chapterCount} ch.</span>
                     </p>
                   </div>
-                  {!book.confirmed && (
+                  {isLocked ? (
+                    <span className="text-xs text-green-500 font-medium flex-shrink-0">Confirmed</span>
+                  ) : !book.confirmed ? (
                     <span className="text-xs text-amber-500 font-medium flex-shrink-0">Unconfirmed</span>
-                  )}
+                  ) : null}
                 </div>
 
                 {/* Expanded: Chapter List + Actions */}
-                {isExpanded && (
+                {isExpanded && !isLocked && (
                   <div className="border-t border-stone-200 dark:border-zinc-800 px-4 py-3 space-y-2">
                     {splitMode === book.index && (
                       <p className="text-xs text-amber-500 font-medium pb-1">
