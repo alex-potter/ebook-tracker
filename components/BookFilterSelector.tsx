@@ -1,15 +1,15 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import type { BookFilter, SeriesDefinition } from '@/types';
+import type { BookFilter, BookContainer } from '@/types';
 
 interface Props {
-  series: SeriesDefinition;
+  container: BookContainer;
   filter: BookFilter;
   onChange: (filter: BookFilter) => void;
 }
 
-export default function BookFilterSelector({ series, filter, onChange }: Props) {
+export default function BookFilterSelector({ container, filter, onChange }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -27,7 +27,7 @@ export default function BookFilterSelector({ series, filter, onChange }: Props) 
   function getLabel(): string {
     if (filter.mode === 'all') return 'All Books';
     if (filter.indices.length === 1) {
-      const book = series.books.find((b) => b.index === filter.indices[0]);
+      const book = container.books.find((b) => b.index === filter.indices[0]);
       return book?.title ?? 'Book';
     }
     return `${filter.indices.length} Books`;
@@ -47,7 +47,7 @@ export default function BookFilterSelector({ series, filter, onChange }: Props) 
       }
     } else {
       next.add(bookIndex);
-      const nonExcludedCount = series.books.filter((b) => !b.excluded).length;
+      const nonExcludedCount = container.books.filter((b) => !b.excluded).length;
       if (next.size === nonExcludedCount) {
         onChange({ mode: 'all' });
         return;
@@ -91,7 +91,7 @@ export default function BookFilterSelector({ series, filter, onChange }: Props) 
             All Books
           </button>
           <div className="border-t border-stone-100 dark:border-zinc-800 my-1" />
-          {[...series.books].filter((b) => !b.excluded).sort((a, b) => a.index - b.index).map((book) => {
+          {[...container.books].filter((b) => !b.excluded).sort((a, b) => a.index - b.index).map((book) => {
             const isSelected = filter.mode === 'all' || selectedIndices?.has(book.index);
             return (
               <button
