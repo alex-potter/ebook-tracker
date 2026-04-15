@@ -149,24 +149,19 @@ export default function WorkshopScreen(props: WorkshopScreenProps) {
           />
         )}
 
-        {activeTab === 'structure' && (
+        {activeTab === 'structure' && props.stored.container && (
           <div>
-            {props.stored.container && props.stored.container.books.length > 1 && (
-              <button
-                onClick={() => setShowStructureEditor(true)}
-                className="w-full px-4 py-3 rounded-xl border border-border text-left hover:border-rust/30 transition-colors"
-              >
-                <span className="text-sm font-serif text-ink">Edit Book Structure</span>
-                <span className="text-xs font-mono text-ink-dim ml-2">
-                  {props.stored.container.books.length} books
-                </span>
-              </button>
-            )}
-            {!props.stored.container && (
-              <p className="text-sm font-serif text-ink-soft text-center py-12">
-                No series structure detected for this book.
-              </p>
-            )}
+            <button
+              onClick={() => setShowStructureEditor(true)}
+              className="w-full px-4 py-3 rounded-xl border border-border text-left hover:border-rust/30 transition-colors"
+            >
+              <span className="text-sm font-serif text-ink">
+                {props.stored.container.books.length > 1 ? 'Edit Series Structure' : 'Edit Book Structure'}
+              </span>
+              <span className="text-xs font-mono text-ink-dim ml-2">
+                {props.stored.container.books.length} book{props.stored.container.books.length !== 1 ? 's' : ''}
+              </span>
+            </button>
           </div>
         )}
 

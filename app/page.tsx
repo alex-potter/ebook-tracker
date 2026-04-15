@@ -1768,18 +1768,6 @@ export default function Home() {
     <main className="h-screen flex flex-col overflow-hidden bg-paper">
       {/* Modals — unchanged */}
       {showSettings && <SettingsModal onClose={() => { setShowSettings(false); setShowSetupPrompt(false); }} />}
-      {showBookStructureEditor && book && storedRef.current?.container && (
-        <BookStructureEditor
-          container={storedRef.current.container}
-          chapters={book.chapters.map(({ order, title, bookIndex, preview, contentType }) =>
-            ({ order, title, bookIndex, preview, contentType }))}
-          onSave={handleSaveContainer}
-          onClose={() => { setShowBookStructureEditor(false); setLockedBookIndices(undefined); }}
-          mode={bookStructureMode}
-          onReextract={handleReextractTitles}
-          lockedBookIndices={lockedBookIndices}
-        />
-      )}
       {showBookmarkModal && book && (
         <BookmarkModal
           chapters={book.chapters}
@@ -1846,6 +1834,20 @@ export default function Home() {
           onRemoveJob={(id) => setQueue((q) => q.filter((j) => j.id !== id))}
           onCancelCurrentJob={() => { queueCancelRef.current = true; }}
           onClearDone={() => setQueue((q) => q.filter((j) => j.status !== 'done' && j.status !== 'error'))}
+        />
+      )}
+
+      {/* BookStructureEditor — rendered after WorkshopScreen so the setup modal stacks on top when both are open (e.g. after appending a sequel from Workshop's Library tab) */}
+      {showBookStructureEditor && book && storedRef.current?.container && (
+        <BookStructureEditor
+          container={storedRef.current.container}
+          chapters={book.chapters.map(({ order, title, bookIndex, preview, contentType }) =>
+            ({ order, title, bookIndex, preview, contentType }))}
+          onSave={handleSaveContainer}
+          onClose={() => { setShowBookStructureEditor(false); setLockedBookIndices(undefined); }}
+          mode={bookStructureMode}
+          onReextract={handleReextractTitles}
+          lockedBookIndices={lockedBookIndices}
         />
       )}
 
