@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CalibreBook } from '@/types';
+import { installPrompt } from '@/lib/pwa/install-prompt';
 
 interface Props {
   onFile: (file: File) => void;
@@ -109,6 +110,7 @@ export default function CalibreLibrary({ onFile }: Props) {
   // Download EPUB
   async function handleBookClick(book: CalibreBook) {
     if (!book.formats.includes('EPUB')) return;
+    installPrompt.maybeShow('book-tap');
     setDownloadingId(book.id);
     try {
       const params = new URLSearchParams({
