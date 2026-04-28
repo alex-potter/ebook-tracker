@@ -19,6 +19,7 @@
     "@anthropic-ai/sdk": "^0.40.0",
     "@capacitor/android": "^6.0.0",
     "@capacitor/core": "^6.0.0",
+    "@ducanh2912/next-pwa": "^10.2.9",
     "claude": "^0.1.1",
     "cross-env": "^7.0.3",
     "framer-motion": "^12.38.0",
@@ -28,7 +29,8 @@
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "undici": "^7.22.0",
-    "vtracer": "^1.0.8"
+    "vtracer": "^1.0.8",
+    "workbox-window": "^7.4.0"
   },
   "lint-staged": {
     "public/icon.svg": [
