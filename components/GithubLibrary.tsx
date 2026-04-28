@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { installPrompt } from '@/lib/pwa/install-prompt';
 
 const REPO = 'alex-potter/bookbuddy';
 const BRANCH = 'main';
@@ -46,6 +47,7 @@ export default function GithubLibrary({ onFile }: Props) {
   }, []);
 
   async function handleSelect(entry: BookBuddyEntry) {
+    installPrompt.maybeShow('book-tap');
     setDownloading(entry.path);
     setError(null);
     try {

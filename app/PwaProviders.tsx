@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { installPrompt } from '@/lib/pwa/install-prompt';
+import InstallBanner from '@/components/pwa/InstallBanner';
 
 export default function PwaProviders() {
   useEffect(() => {
@@ -30,5 +31,5 @@ export default function PwaProviders() {
     };
   }, []);
 
-  return null;
+  return <InstallBanner />;
 }
