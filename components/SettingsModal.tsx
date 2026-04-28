@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { loadAiSettings, saveAiSettings, testConnection, diagnoseOllamaConnection, type AiSettings } from '@/lib/ai-client';
 import type { ModelInfo, DownloadProgress } from '@/lib/llama-plugin';
 import type { ModelEntry } from '@/lib/local-llm';
+import InstallButton from '@/components/pwa/InstallButton';
 
 const IS_MOBILE = process.env.NEXT_PUBLIC_MOBILE === 'true';
 
@@ -147,6 +148,8 @@ export default function SettingsModal({ onClose }: Props) {
           <h2 className="font-bold text-stone-900 dark:text-zinc-100 text-base">AI Settings</h2>
           <button onClick={onClose} className="text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors text-lg leading-none">✕</button>
         </div>
+
+        <InstallButton />
 
         {/* Provider toggle */}
         <div>
