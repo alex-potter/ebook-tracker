@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { installPrompt } from '@/lib/pwa/install-prompt';
 
 export default function PwaProviders() {
   useEffect(() => {
@@ -9,6 +10,7 @@ export default function PwaProviders() {
     if (!('serviceWorker' in navigator)) return;
 
     let cancelled = false;
+    installPrompt.attach();
 
     (async () => {
       const { Workbox } = await import('workbox-window');
@@ -24,6 +26,7 @@ export default function PwaProviders() {
 
     return () => {
       cancelled = true;
+      installPrompt.detach();
     };
   }, []);
 
