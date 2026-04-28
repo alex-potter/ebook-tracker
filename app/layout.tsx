@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Newsreader, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
+import PwaProviders from './PwaProviders';
 
 const newsreader = Newsreader({
   subsets: ['latin'],
@@ -36,7 +37,7 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+  const isCapacitor = process.env.NEXT_PUBLIC_CAPACITOR === 'true';
   return (
     <html lang="en" suppressHydrationWarning className={`${newsreader.variable} ${jetbrainsMono.variable}`}>
       <head>
@@ -88,7 +89,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="apple-touch-startup-image" href="/icons/apple-splash-640-1136.png" media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
         <link rel="apple-touch-startup-image" href="/icons/apple-splash-1136-640.png" media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
       </head>
-      <body className="min-h-dvh antialiased">{children}</body>
+      <body className="min-h-dvh antialiased">
+        {children}
+        {!isCapacitor && <PwaProviders />}
+      </body>
     </html>
   );
 }
