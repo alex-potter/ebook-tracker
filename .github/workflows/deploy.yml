@@ -23,6 +23,8 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - name: Verify PWA assets are in sync
+        run: npm run pwa:assets:check
       - name: Build static export
         run: node scripts/mobile-build.js
         env:
