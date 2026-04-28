@@ -11,7 +11,9 @@
     "cap:android": "npm run build:mobile && npx cap sync && npx cap open android",
     "build:pwa": "cross-env NEXT_PUBLIC_BASE_PATH=/bookbuddy npm run build:mobile",
     "deploy:gh-pages": "npm run build:pwa && npx gh-pages -d out",
-    "pwa:assets": "node scripts/generate-pwa-assets.js"
+    "pwa:assets": "node scripts/generate-pwa-assets.js",
+    "pwa:assets:check": "node scripts/generate-pwa-assets.js && git diff --exit-code public/icons public/manifest.json",
+    "prepare": "husky"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.40.0",
@@ -28,12 +30,20 @@
     "undici": "^7.22.0",
     "vtracer": "^1.0.8"
   },
+  "lint-staged": {
+    "public/icon.svg": [
+      "node scripts/generate-pwa-assets.js",
+      "git add public/icons public/manifest.json"
+    ]
+  },
   "devDependencies": {
     "@capacitor/cli": "^6.0.0",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "autoprefixer": "^10",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.2",
     "postcss": "^8",
     "pwa-asset-generator": "^6.4.0",
     "tailwindcss": "^3",
