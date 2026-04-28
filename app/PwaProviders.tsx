@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { installPrompt } from '@/lib/pwa/install-prompt';
 import InstallBanner from '@/components/pwa/InstallBanner';
+import UpdateToast from '@/components/pwa/UpdateToast';
 
 export default function PwaProviders() {
   useEffect(() => {
@@ -20,6 +21,10 @@ export default function PwaProviders() {
       const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
       const wb = new Workbox(`${basePath}/sw.js`, { scope: `${basePath}/` });
 
+      wb.addEventListener('waiting', () => {
+        UpdateToast.show(wb);
+      });
+
       wb.register().catch((err) => {
         console.error('[PWA] SW registration failed:', err);
       });
@@ -31,5 +36,10 @@ export default function PwaProviders() {
     };
   }, []);
 
-  return <InstallBanner />;
+  return (
+    <>
+      <InstallBanner />
+      <UpdateToast.Mount />
+    </>
+  );
 }
