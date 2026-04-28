@@ -10,12 +10,14 @@
     "cap:sync": "npm run build:mobile && npx cap sync",
     "cap:android": "npm run build:mobile && npx cap sync && npx cap open android",
     "build:pwa": "cross-env NEXT_PUBLIC_BASE_PATH=/bookbuddy npm run build:mobile",
-    "deploy:gh-pages": "npm run build:pwa && npx gh-pages -d out"
+    "deploy:gh-pages": "npm run build:pwa && npx gh-pages -d out",
+    "pwa:assets": "node scripts/generate-pwa-assets.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.40.0",
     "@capacitor/android": "^6.0.0",
     "@capacitor/core": "^6.0.0",
+    "claude": "^0.1.1",
     "cross-env": "^7.0.3",
     "framer-motion": "^12.38.0",
     "jszip": "^3.10.1",
@@ -33,6 +35,7 @@
     "@types/react-dom": "^18",
     "autoprefixer": "^10",
     "postcss": "^8",
+    "pwa-asset-generator": "^6.4.0",
     "tailwindcss": "^3",
     "typescript": "^5"
   }
