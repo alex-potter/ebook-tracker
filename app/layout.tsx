@@ -15,10 +15,12 @@ const jetbrainsMono = JetBrains_Mono({
   display: 'swap',
 });
 
+const IS_CAPACITOR = process.env.NEXT_PUBLIC_CAPACITOR === 'true';
+
 export const metadata: Metadata = {
   title: 'BookBuddy',
   description: 'Track characters as you read your ebook — spoiler-free.',
-  manifest: '/manifest.json',
+  ...(IS_CAPACITOR ? {} : { manifest: '/manifest.json' }),
   appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: 'BookBuddy' },
   icons: {
     icon: [
@@ -37,7 +39,7 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const isCapacitor = process.env.NEXT_PUBLIC_CAPACITOR === 'true';
+  const isCapacitor = IS_CAPACITOR;
   return (
     <html lang="en" suppressHydrationWarning className={`${newsreader.variable} ${jetbrainsMono.variable}`}>
       <head>
