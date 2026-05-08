@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { EbookChapter, BookContainer } from '@/types';
 import { normalizeTitle } from '@/lib/normalize-title';
 import { getDisplayLabel, displayChapterNumber, findBookForChapter } from '@/lib/series';
@@ -186,9 +186,10 @@ interface ComboboxProps {
   bookGroups: Map<number, { bookTitle: string; items: Array<{ ch: EbookChapter; globalIndex: number; chapterNum: number }> }>;
   onChange: (index: number) => void;
   container?: BookContainer;
+  visibleChapterOrders?: Set<number> | null;
 }
 
-function ChapterCombobox({ chapters, currentIndex, lastAnalyzedIndex, isOmnibus, bookGroups, onChange, container }: ComboboxProps) {
+function ChapterCombobox({ chapters, currentIndex, lastAnalyzedIndex, isOmnibus, bookGroups, onChange, container, visibleChapterOrders }: ComboboxProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -200,7 +201,7 @@ function ChapterCombobox({ chapters, currentIndex, lastAnalyzedIndex, isOmnibus,
   const subLabel = (() => {
     if (!currentCh) return '';
     if (container) return getDisplayLabel(container, currentCh.order);
-    if (currentCh.bookIndex === undefined) return `${currentIndex + 1} of ${chapters.length} chapters`;
+    if (currentCh.bookIndex === undefined) return `${currentIndex + 1} of ${visibleChapterOrders?.size ?? chapters.length} chapters`;
     let num = 0, bookTotal = 0;
     for (const c of chapters) {
       if (c.bookIndex === currentCh.bookIndex) { bookTotal++; if (c.order <= currentCh.order) num++; }
@@ -219,11 +220,10 @@ function ChapterCombobox({ chapters, currentIndex, lastAnalyzedIndex, isOmnibus,
           groupLabel: container ? (findBookForChapter(container, ch.order)?.title ?? bookTitle) : bookTitle,
         })),
       )
-    : chapters.map((ch, i) => ({
-        globalIndex: i,
-        label: normalizeTitle(ch.title),
-        chapterNum: container ? displayChapterNumber(container, 0, ch.order) : undefined,
-      }));
+    : chapters.flatMap((ch, i) => {
+        if (visibleChapterOrders && !visibleChapterOrders.has(i)) return [];
+        return [{ globalIndex: i, label: normalizeTitle(ch.title), chapterNum: container ? displayChapterNumber(container, 0, ch.order) : undefined }];
+      });
 
   const q = query.toLowerCase();
   const filtered = q
@@ -360,11 +360,28 @@ export default function ChapterSelector({
   const [mode, setMode] = useState<'chapter' | 'location'>('chapter');
   const [locationInput, setLocationInput] = useState('');
 
-  const isOmnibus = chapters.some((ch) => ch.bookIndex !== undefined);
+  const isOmnibus = container
+    ? container.books.filter(b => !b.excluded).length > 1
+    : chapters.some((ch) => ch.bookIndex !== undefined);
   const totalLocations = chapterIndexToLocation(chapters.length - 1, chapters);
   const busy = analyzing || rebuilding || !!metaOnly;
 
-  // Build book groups (omnibus only), filtering by visibleChapterOrders
+  // Derive visible set directly from the container prop so filtering stays
+  // accurate even if the parent's visibleChapterOrders is stale.
+  const effectiveVisible = useMemo(() => {
+    if (visibleChapterOrders) return visibleChapterOrders;
+    if (!container) return null;
+    const visible = new Set<number>();
+    for (const b of container.books) {
+      if (b.excluded) continue;
+      for (let o = b.chapterStart; o <= b.chapterEnd; o++) {
+        if (!b.excludedChapters.includes(o)) visible.add(o);
+      }
+    }
+    return visible;
+  }, [visibleChapterOrders, container]);
+
+  // Build book groups (omnibus only), filtering by effectiveVisible
   const bookGroups = new Map<number, {
     bookTitle: string;
     items: Array<{ ch: EbookChapter; globalIndex: number; chapterNum: number }>;
@@ -373,7 +390,7 @@ export default function ChapterSelector({
     const counters = new Map<number, number>();
     for (let i = 0; i < chapters.length; i++) {
       const ch = chapters[i];
-      if (visibleChapterOrders && !visibleChapterOrders.has(i)) continue;
+      if (effectiveVisible && !effectiveVisible.has(i)) continue;
       const bIdx = ch.bookIndex ?? 0;
       if (!bookGroups.has(bIdx)) bookGroups.set(bIdx, { bookTitle: ch.bookTitle ?? '', items: [] });
       const num = (counters.get(bIdx) ?? 0) + 1;
@@ -547,6 +564,7 @@ export default function ChapterSelector({
             bookGroups={bookGroups}
             onChange={onChange}
             container={container}
+            visibleChapterOrders={effectiveVisible}
           />
         ) : (
           <>
@@ -743,7 +761,7 @@ export default function ChapterSelector({
           /* Flat list for non-omnibus */
           <ul className="space-y-0.5">
             {chapters.map((ch, i) => {
-              if (visibleChapterOrders && !visibleChapterOrders.has(i)) return null;
+              if (effectiveVisible && !effectiveVisible.has(i)) return null;
               if (rangeStart !== undefined && i < rangeStart) return null;
               if (rangeEnd !== undefined && i > rangeEnd) return null;
               return <ChapterItem key={ch.id} ch={ch} globalIndex={i} isExcluded={false} isRangeStart={rangeStart === i} isRangeEnd={rangeEnd === i} {...itemProps} />;

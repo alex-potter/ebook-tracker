@@ -10,14 +10,14 @@ import EntityPicker from './EntityPicker';
 const STATUS_CONFIG = {
   alive:     { label: 'Alive',     color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', dot: 'bg-emerald-400' },
   dead:      { label: 'Dead',      color: 'bg-red-500/10 text-red-400 border-red-500/20',             dot: 'bg-red-400' },
-  unknown:   { label: 'Unknown',   color: 'bg-stone-200/50 dark:bg-zinc-700/50 text-stone-500 dark:text-zinc-400 border-stone-400 dark:border-zinc-600/30',          dot: 'bg-stone-400 dark:bg-zinc-500' },
+  unknown:   { label: 'Unknown',   color: 'bg-paper-dark/50 text-ink-soft border-border',          dot: 'bg-ink-dim' },
   uncertain: { label: 'Uncertain', color: 'bg-amber-500/10 text-amber-400 border-amber-500/20',       dot: 'bg-amber-400' },
 };
 
 const IMPORTANCE_CONFIG = {
-  main:      { label: 'Main',      color: 'bg-amber-500 text-zinc-900' },
-  secondary: { label: 'Secondary', color: 'bg-stone-200 dark:bg-zinc-700 text-stone-700 dark:text-zinc-300' },
-  minor:     { label: 'Minor',     color: 'bg-stone-100 dark:bg-zinc-800 text-stone-400 dark:text-zinc-500' },
+  main:      { label: 'Main',      color: 'bg-rust text-white' },
+  secondary: { label: 'Secondary', color: 'bg-paper-dark text-ink' },
+  minor:     { label: 'Minor',     color: 'bg-paper text-ink-dim' },
 };
 
 function nameColor(name: string): string {
@@ -289,24 +289,24 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
     return (
       <div className="space-y-4">
         <div>
-          <label className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider">Name</label>
+          <label className="text-xs font-semibold text-ink-dim uppercase tracking-wider">Name</label>
           <input
             value={draft.name}
             onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-            className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200 focus:border-stone-400 dark:focus:border-zinc-500"
+            className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-transparent outline-none border-border text-ink focus:border-rust"
           />
         </div>
         <div>
-          <label className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider">Aliases (comma-separated)</label>
+          <label className="text-xs font-semibold text-ink-dim uppercase tracking-wider">Aliases (comma-separated)</label>
           <input
             value={draft.aliases}
             onChange={(e) => setDraft({ ...draft, aliases: e.target.value })}
-            className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200 focus:border-stone-400 dark:focus:border-zinc-500"
+            className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-transparent outline-none border-border text-ink focus:border-rust"
           />
         </div>
         <div className="flex gap-3">
           <div className="flex-1">
-            <label className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider">Importance</label>
+            <label className="text-xs font-semibold text-ink-dim uppercase tracking-wider">Importance</label>
             <div className="flex gap-1 mt-1">
               {(['main', 'secondary', 'minor'] as const).map((val) => (
                 <button
@@ -315,7 +315,7 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
                   className={`flex-1 text-xs py-1.5 rounded-lg border font-medium transition-colors ${
                     draft.importance === val
                       ? 'bg-amber-500/20 text-amber-400 border-amber-500/40'
-                      : 'border-stone-300 dark:border-zinc-700 text-stone-400 dark:text-zinc-500 hover:text-stone-600 dark:hover:text-zinc-300'
+                      : 'border-border text-ink-dim hover:text-ink'
                   }`}
                 >
                   {val.charAt(0).toUpperCase() + val.slice(1)}
@@ -324,7 +324,7 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
             </div>
           </div>
           <div className="flex-1">
-            <label className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider">Status</label>
+            <label className="text-xs font-semibold text-ink-dim uppercase tracking-wider">Status</label>
             <div className="flex gap-1 mt-1">
               {(['alive', 'dead', 'unknown', 'uncertain'] as const).map((val) => (
                 <button
@@ -333,7 +333,7 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
                   className={`flex-1 text-[10px] py-1.5 rounded-lg border font-medium transition-colors ${
                     draft.status === val
                       ? 'bg-amber-500/20 text-amber-400 border-amber-500/40'
-                      : 'border-stone-300 dark:border-zinc-700 text-stone-400 dark:text-zinc-500 hover:text-stone-600 dark:hover:text-zinc-300'
+                      : 'border-border text-ink-dim hover:text-ink'
                   }`}
                 >
                   {val.charAt(0).toUpperCase() + val.slice(1)}
@@ -343,35 +343,35 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
           </div>
         </div>
         <div>
-          <label className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider">Current Location</label>
+          <label className="text-xs font-semibold text-ink-dim uppercase tracking-wider">Current Location</label>
           <input
             value={draft.currentLocation}
             onChange={(e) => setDraft({ ...draft, currentLocation: e.target.value })}
-            className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200 focus:border-stone-400 dark:focus:border-zinc-500"
+            className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-transparent outline-none border-border text-ink focus:border-rust"
           />
         </div>
         <div>
-          <label className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider">Description</label>
+          <label className="text-xs font-semibold text-ink-dim uppercase tracking-wider">Description</label>
           <textarea
             value={draft.description}
             onChange={(e) => setDraft({ ...draft, description: e.target.value })}
             rows={3}
-            className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200 focus:border-stone-400 dark:focus:border-zinc-500 resize-none"
+            className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-transparent outline-none border-border text-ink focus:border-rust resize-none"
           />
         </div>
         <div>
-          <label className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider">Recent Events</label>
+          <label className="text-xs font-semibold text-ink-dim uppercase tracking-wider">Recent Events</label>
           <textarea
             value={draft.recentEvents}
             onChange={(e) => setDraft({ ...draft, recentEvents: e.target.value })}
             rows={2}
-            className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200 focus:border-stone-400 dark:focus:border-zinc-500 resize-none"
+            className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-transparent outline-none border-border text-ink focus:border-rust resize-none"
           />
         </div>
         {/* Relationships */}
         <div>
           <div className="flex items-center justify-between">
-            <label className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider">Relationships</label>
+            <label className="text-xs font-semibold text-ink-dim uppercase tracking-wider">Relationships</label>
             <button
               onClick={() => setDraft({ ...draft, relationships: [...draft.relationships, { character: '', relationship: '' }] })}
               className="text-[10px] text-amber-500 hover:text-amber-400 font-medium"
@@ -390,7 +390,7 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
                     setDraft({ ...draft, relationships: rels });
                   }}
                   placeholder="Character"
-                  className="flex-1 text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200 focus:border-stone-400 dark:focus:border-zinc-500"
+                  className="flex-1 text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-border text-ink focus:border-rust"
                 />
                 <input
                   value={rel.relationship}
@@ -400,11 +400,11 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
                     setDraft({ ...draft, relationships: rels });
                   }}
                   placeholder="Relationship"
-                  className="flex-1 text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200 focus:border-stone-400 dark:focus:border-zinc-500"
+                  className="flex-1 text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-border text-ink focus:border-rust"
                 />
                 <button
                   onClick={() => setDraft({ ...draft, relationships: draft.relationships.filter((_, j) => j !== i) })}
-                  className="text-stone-400 hover:text-red-400 text-xs flex-shrink-0"
+                  className="text-ink-dim hover:text-danger text-xs flex-shrink-0"
                 >
                   ✕
                 </button>
@@ -414,19 +414,19 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
         </div>
         {/* Action buttons */}
         <div className="flex gap-2 pt-2">
-          <button onClick={handleSaveEdit} className="flex-1 text-xs py-2 rounded-lg bg-amber-500 text-zinc-900 font-semibold hover:bg-amber-400 transition-colors">
+          <button onClick={handleSaveEdit} className="flex-1 text-xs py-2 rounded-lg bg-rust text-white font-semibold hover:bg-rust/90 transition-colors">
             Save
           </button>
-          <button onClick={() => { setDraft(charToDraft(character)); setMode('view'); }} className="flex-1 text-xs py-2 rounded-lg border border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors">
+          <button onClick={() => { setDraft(charToDraft(character)); setMode('view'); }} className="flex-1 text-xs py-2 rounded-lg border border-border text-ink-soft hover:text-ink transition-colors">
             Cancel
           </button>
         </div>
         {/* Merge / Split / Delete row */}
-        <div className="flex gap-2 border-t border-stone-200 dark:border-zinc-800 pt-3">
-          <button onClick={() => setMode('merge')} className="text-[11px] px-2.5 py-1 rounded-lg border border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:text-amber-500 hover:border-amber-500/40 transition-colors">
+        <div className="flex gap-2 border-t border-border pt-3">
+          <button onClick={() => setMode('merge')} className="text-[11px] px-2.5 py-1 rounded-lg border border-border text-ink-soft hover:text-rust hover:border-amber-500/40 transition-colors">
             Merge with...
           </button>
-          <button onClick={() => { setSplitA(charToDraft(character)); setSplitB(charToDraft(character)); setMode('split'); }} className="text-[11px] px-2.5 py-1 rounded-lg border border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:text-violet-400 hover:border-violet-400/40 transition-colors">
+          <button onClick={() => { setSplitA(charToDraft(character)); setSplitB(charToDraft(character)); setMode('split'); }} className="text-[11px] px-2.5 py-1 rounded-lg border border-border text-ink-soft hover:text-violet-400 hover:border-violet-400/40 transition-colors">
             Split into two...
           </button>
           <button onClick={() => setMode('delete')} className="ml-auto text-[11px] px-2.5 py-1 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors">
@@ -440,10 +440,10 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
   function renderSplitForm() {
     const renderHalf = (label: string, d: DraftCharacter, setD: (d: DraftCharacter) => void) => (
       <div className="flex-1 space-y-2">
-        <p className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider">{label}</p>
-        <input value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} placeholder="Name" className="w-full text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200" />
-        <input value={d.aliases} onChange={(e) => setD({ ...d, aliases: e.target.value })} placeholder="Aliases" className="w-full text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200" />
-        <textarea value={d.description} onChange={(e) => setD({ ...d, description: e.target.value })} placeholder="Description" rows={3} className="w-full text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200 resize-none" />
+        <p className="text-xs font-semibold text-ink-dim uppercase tracking-wider">{label}</p>
+        <input value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} placeholder="Name" className="w-full text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-border text-ink" />
+        <input value={d.aliases} onChange={(e) => setD({ ...d, aliases: e.target.value })} placeholder="Aliases" className="w-full text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-border text-ink" />
+        <textarea value={d.description} onChange={(e) => setD({ ...d, description: e.target.value })} placeholder="Description" rows={3} className="w-full text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-border text-ink resize-none" />
       </div>
     );
 
@@ -451,17 +451,17 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
 
     return (
       <div className="space-y-4">
-        <p className="text-xs text-stone-400 dark:text-zinc-500">Split <strong className="text-stone-700 dark:text-zinc-300">{character.name}</strong> into two separate characters. Edit each side, then confirm.</p>
+        <p className="text-xs text-ink-dim">Split <strong className="text-ink">{character.name}</strong> into two separate characters. Edit each side, then confirm.</p>
         <div className="flex gap-3">
           {renderHalf('Character A', splitA, setSplitA)}
-          <div className="w-px bg-stone-200 dark:bg-zinc-800 flex-shrink-0" />
+          <div className="w-px bg-paper flex-shrink-0" />
           {renderHalf('Character B', splitB, setSplitB)}
         </div>
         <div className="flex gap-2">
           <button onClick={handleSplit} disabled={!canConfirm} className="flex-1 text-xs py-2 rounded-lg bg-violet-500 text-white font-semibold hover:bg-violet-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             Split
           </button>
-          <button onClick={() => setMode('edit')} className="flex-1 text-xs py-2 rounded-lg border border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors">
+          <button onClick={() => setMode('edit')} className="flex-1 text-xs py-2 rounded-lg border border-border text-ink-soft hover:text-ink transition-colors">
             Cancel
           </button>
         </div>
@@ -472,17 +472,17 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
   function renderDeleteConfirm() {
     return (
       <div className="space-y-4 text-center py-4">
-        <p className="text-sm text-stone-700 dark:text-zinc-300">
+        <p className="text-sm text-ink">
           Delete <strong>{character.name}</strong>? This cannot be undone.
         </p>
-        <p className="text-xs text-stone-400 dark:text-zinc-500">
+        <p className="text-xs text-ink-dim">
           References to this character will be removed from other characters&apos; relationships and arc character lists.
         </p>
         <div className="flex gap-2 justify-center">
           <button onClick={handleDelete} className="text-xs px-4 py-2 rounded-lg bg-red-500 text-white font-semibold hover:bg-red-400 transition-colors">
             Confirm Delete
           </button>
-          <button onClick={() => setMode('edit')} className="text-xs px-4 py-2 rounded-lg border border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors">
+          <button onClick={() => setMode('edit')} className="text-xs px-4 py-2 rounded-lg border border-border text-ink-soft hover:text-ink transition-colors">
             Cancel
           </button>
         </div>
@@ -511,11 +511,11 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
 
         {/* Panel */}
         <div
-          className="relative z-10 w-full max-w-lg max-h-[85vh] max-h-[85dvh] flex flex-col bg-white dark:bg-zinc-900 rounded-2xl border border-stone-200 dark:border-zinc-800 shadow-2xl"
+          className="relative z-10 w-full max-w-lg max-h-[85vh] max-h-[85dvh] flex flex-col bg-paper-raised rounded-2xl border border-border shadow-2xl font-serif"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex-shrink-0 p-6 border-b border-stone-200 dark:border-zinc-800 pb-0">
+          <div className="flex-shrink-0 p-6 border-b border-border pb-0">
             <div className="flex items-start gap-4">
               <div className={`flex-shrink-0 w-14 h-14 rounded-xl flex items-center justify-center text-lg font-bold ${nameColor(character.name)}`}>
                 {initials(character.name)}
@@ -523,16 +523,16 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h2 className="text-lg font-bold text-stone-900 dark:text-zinc-100 leading-tight">{character.name}</h2>
+                    <h2 className="text-lg font-bold text-ink leading-tight">{character.name}</h2>
                     {character.aliases?.length > 0 && (
-                      <p className="text-sm text-stone-400 dark:text-zinc-500 mt-0.5">{character.aliases.join(' · ')}</p>
+                      <p className="text-sm text-ink-dim mt-0.5">{character.aliases.join(' · ')}</p>
                     )}
                   </div>
                   <div className="flex items-center gap-1.5">
                     {canEdit && mode === 'view' && (
                       <button
                         onClick={() => { setDraft(charToDraft(character)); setMode('edit'); setTab('overview'); }}
-                        className="flex-shrink-0 text-stone-400 dark:text-zinc-600 hover:text-amber-500 transition-colors text-sm leading-none p-1"
+                        className="flex-shrink-0 text-ink-dim hover:text-rust transition-colors text-sm leading-none p-1"
                         title="Edit character"
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
@@ -540,7 +540,7 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
                     )}
                     <button
                       onClick={mode !== 'view' ? () => setMode('view') : onClose}
-                      className="flex-shrink-0 text-stone-400 dark:text-zinc-600 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors text-lg leading-none"
+                      className="flex-shrink-0 text-ink-dim hover:text-ink transition-colors text-lg leading-none"
                     >
                       ✕
                     </button>
@@ -572,8 +572,8 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
                     onClick={() => setTab(key as 'overview' | 'timeline')}
                     className={`px-4 py-2 text-xs font-medium border-b-2 transition-colors -mb-px ${
                       tab === key
-                        ? 'border-amber-500 text-amber-400'
-                        : 'border-transparent text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300'
+                        ? 'border-rust text-rust'
+                        : 'border-transparent text-ink-dim hover:text-ink'
                     }`}
                   >
                     {label}
@@ -599,37 +599,37 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
               <>
                 {character.description && (
                   <section>
-                    <p className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider mb-1.5">About</p>
-                    <p className="text-sm text-stone-700 dark:text-zinc-300 leading-relaxed">{character.description}</p>
+                    <p className="text-xs font-semibold text-ink-dim uppercase tracking-wider mb-1.5">About</p>
+                    <p className="text-sm text-ink leading-relaxed">{character.description}</p>
                   </section>
                 )}
                 <section className="grid grid-cols-2 gap-3">
-                  <div className="p-3 bg-stone-100/50 dark:bg-zinc-800/50 rounded-lg border border-stone-200 dark:border-zinc-800">
-                    <p className="text-[10px] font-semibold text-stone-400 dark:text-zinc-600 uppercase tracking-wider mb-1">Current location</p>
+                  <div className="p-3 bg-paper/50 rounded-lg border border-border">
+                    <p className="text-[10px] font-semibold text-ink-dim uppercase tracking-wider mb-1">Current location</p>
                     {character.currentLocation && character.currentLocation !== 'Unknown' && onEntityClick ? (
                       <button
                         onClick={() => onEntityClick('location', character.currentLocation)}
-                        className="text-sm text-stone-700 dark:text-zinc-300 hover:text-sky-500 dark:hover:text-sky-400 hover:underline transition-colors text-left"
+                        className="text-sm text-ink hover:text-sky-500 dark:hover:text-sky-400 hover:underline transition-colors text-left"
                       >
                         {character.currentLocation}
                       </button>
                     ) : (
-                      <p className="text-sm text-stone-700 dark:text-zinc-300">{character.currentLocation || 'Unknown'}</p>
+                      <p className="text-sm text-ink">{character.currentLocation || 'Unknown'}</p>
                     )}
                   </div>
-                  <div className="p-3 bg-stone-100/50 dark:bg-zinc-800/50 rounded-lg border border-stone-200 dark:border-zinc-800">
-                    <p className="text-[10px] font-semibold text-stone-400 dark:text-zinc-600 uppercase tracking-wider mb-1">Last seen</p>
+                  <div className="p-3 bg-paper/50 rounded-lg border border-border">
+                    <p className="text-[10px] font-semibold text-ink-dim uppercase tracking-wider mb-1">Last seen</p>
                     {(() => {
                       const idx = chapterTitles?.findIndex((t) => t === character.lastSeen);
                       return idx != null && idx >= 0 && onChapterJump ? (
                         <button
                           onClick={() => onChapterJump(idx)}
-                          className="text-sm text-stone-700 dark:text-zinc-300 hover:text-sky-500 dark:hover:text-sky-400 hover:underline transition-colors text-left"
+                          className="text-sm text-ink hover:text-sky-500 dark:hover:text-sky-400 hover:underline transition-colors text-left"
                         >
                           {character.lastSeen}
                         </button>
                       ) : (
-                        <p className="text-sm text-stone-700 dark:text-zinc-300">{character.lastSeen || '—'}</p>
+                        <p className="text-sm text-ink">{character.lastSeen || '—'}</p>
                       );
                     })()}
                   </div>
@@ -638,13 +638,13 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
                   <section>
                     <p className="text-xs font-semibold text-amber-500/80 uppercase tracking-wider mb-1.5">Recent events</p>
                     <div className="p-3 bg-amber-500/5 border border-amber-500/10 rounded-lg">
-                      <p className="text-sm text-stone-700 dark:text-zinc-300 leading-relaxed">{character.recentEvents}</p>
+                      <p className="text-sm text-ink leading-relaxed">{character.recentEvents}</p>
                     </div>
                   </section>
                 )}
                 {character.relationships?.length > 0 && (
                   <section>
-                    <p className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider mb-2">
+                    <p className="text-xs font-semibold text-ink-dim uppercase tracking-wider mb-2">
                       Relationships ({character.relationships.length})
                     </p>
                     <ul className="space-y-2">
@@ -656,10 +656,10 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
                           <div className="flex-1 min-w-0 pt-0.5">
                             <button
                               onClick={(e) => { e.stopPropagation(); onEntityClick?.('character', rel.character); }}
-                              className={`text-sm font-medium text-stone-800 dark:text-zinc-200 ${onEntityClick ? 'hover:underline cursor-pointer' : ''}`}
+                              className={`text-sm font-medium text-ink ${onEntityClick ? 'hover:underline cursor-pointer' : ''}`}
                               disabled={!onEntityClick}
                             >{rel.character}</button>
-                            <span className="text-sm text-stone-400 dark:text-zinc-500"> — {rel.relationship}</span>
+                            <span className="text-sm text-ink-dim"> — {rel.relationship}</span>
                           </div>
                         </li>
                       ))}
@@ -671,21 +671,21 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
 
             {mode === 'view' && tab === 'timeline' && (
               <section>
-                <p className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider mb-4">
+                <p className="text-xs font-semibold text-ink-dim uppercase tracking-wider mb-4">
                   Event history · newest first
                 </p>
                 {timeline.length === 0 ? (
-                  <p className="text-sm text-stone-400 dark:text-zinc-600 text-center py-6">No history yet — analyze more chapters to build a timeline.</p>
+                  <p className="text-sm text-ink-dim text-center py-6">No history yet — analyze more chapters to build a timeline.</p>
                 ) : (
-                  <ol className="relative border-l border-stone-200 dark:border-zinc-800 space-y-0">
+                  <ol className="relative border-l border-border space-y-0">
                     {timeline.map((entry, i) => (
                       <li key={i} className="pl-5 pb-6 last:pb-0 relative">
-                        <span className="absolute -left-[4.5px] top-1.5 w-2 h-2 rounded-full bg-stone-200 dark:bg-zinc-700 border border-stone-300 dark:border-zinc-600" />
-                        <p className="text-[11px] font-semibold text-stone-400 dark:text-zinc-500 mb-1">
+                        <span className="absolute -left-[4.5px] top-1.5 w-2 h-2 rounded-full bg-paper-dark border border-border" />
+                        <p className="text-[11px] font-semibold text-ink-dim mb-1">
                           Ch. {entry.chapterIndex + 1} — {entry.chapterTitle}
                         </p>
                         {entry.location && entry.location !== 'Unknown' && (
-                          <p className="text-[11px] text-stone-400 dark:text-zinc-600 mb-1">📍 <button
+                          <p className="text-[11px] text-ink-dim mb-1">📍 <button
                             onClick={(e) => { e.stopPropagation(); onEntityClick?.('location', entry.location!); }}
                             className={onEntityClick ? 'hover:underline cursor-pointer' : ''}
                             disabled={!onEntityClick}
@@ -706,7 +706,7 @@ export default function CharacterModal({ character, snapshots, chapterTitles, cu
                             ))}
                           </div>
                         )}
-                        <p className="text-sm text-stone-700 dark:text-zinc-300 leading-relaxed">{entry.recentEvents}</p>
+                        <p className="text-sm text-ink leading-relaxed">{entry.recentEvents}</p>
                       </li>
                     ))}
                   </ol>

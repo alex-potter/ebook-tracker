@@ -70,37 +70,35 @@ export default function ExploreHeader({
         </button>
         {menuOpen && (
           <div className="absolute right-0 top-full mt-1 z-50 bg-paper-raised border border-border rounded-lg shadow-lg py-1 min-w-[160px]">
-            {hasStoredState && (
-              <button
-                onClick={() => { onOpenWorkshop(); setMenuOpen(false); }}
-                className="w-full text-left px-3 py-2 text-sm text-ink hover:bg-paper-dark transition-colors font-serif"
-              >
-                Workshop
-              </button>
-            )}
+            <button
+              onClick={() => { onOpenWorkshop(); setMenuOpen(false); }}
+              className="w-full text-left px-3 py-2 text-sm text-ink hover:bg-paper-dark transition-colors font-serif"
+            >
+              Workshop
+            </button>
             {hasStoredState && (
               <button
                 onClick={() => { onOpenChat(); setMenuOpen(false); }}
-                className="w-full text-left px-3 py-2 text-sm text-ink hover:bg-paper-dark transition-colors"
+                className="w-full text-left px-3 py-2 text-sm text-ink hover:bg-paper-dark transition-colors font-serif"
               >
                 Chat
               </button>
             )}
             <button
               onClick={() => { onOpenSettings(); setMenuOpen(false); }}
-              className="w-full text-left px-3 py-2 text-sm text-ink hover:bg-paper-dark transition-colors"
+              className="w-full text-left px-3 py-2 text-sm text-ink hover:bg-paper-dark transition-colors font-serif"
             >
               Settings
             </button>
             <button
               onClick={() => { onToggleTheme(); setMenuOpen(false); }}
-              className="w-full text-left px-3 py-2 text-sm text-ink hover:bg-paper-dark transition-colors"
+              className="w-full text-left px-3 py-2 text-sm text-ink hover:bg-paper-dark transition-colors font-serif"
             >
               {isDark ? 'Light mode' : 'Dark mode'}
             </button>
             <button
               onClick={() => { onChangeBook(); setMenuOpen(false); }}
-              className="w-full text-left px-3 py-2 text-sm text-ink hover:bg-paper-dark transition-colors"
+              className="w-full text-left px-3 py-2 text-sm text-ink hover:bg-paper-dark transition-colors font-serif"
             >
               Change book
             </button>

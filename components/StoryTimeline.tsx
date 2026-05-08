@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AnalysisResult, BookContainer, ChapterEvent, PinUpdates, ReadingPosition, Snapshot } from '@/types';
 import type { SnapshotTransform } from '@/lib/propagate-edit';
+import BookBuddyIcon from './BookBuddyIcon';
 import CharacterModal from './CharacterModal';
 import NarrativeArcModal from './NarrativeArcModal';
 import LocationModal from './LocationModal';
@@ -94,8 +95,8 @@ export default function StoryTimeline({ snapshots, chapterTitles, currentIndex, 
       >
         {/* Header */}
         <div className="flex items-center gap-3 p-6 pb-4 border-b border-border flex-shrink-0">
-          <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-paper flex items-center justify-center text-lg">
-            📖
+          <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-paper flex items-center justify-center text-rust">
+            <BookBuddyIcon className="w-7 h-7" />
           </div>
           <h2 className="text-lg font-bold text-ink flex-1">Story Timeline</h2>
           <button
