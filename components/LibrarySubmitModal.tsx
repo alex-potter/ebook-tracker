@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { loadBookState, loadBookMapState } from '@/lib/book-storage';
-import type { StoredBookState } from '@/types';
+import type { BookBuddyExport, StoredBookState } from '@/types';
 
 interface Props {
   title: string;
@@ -42,7 +42,16 @@ export default function LibrarySubmitModal({ title, author, onClose }: Props) {
     const state = await loadBookState(title, author);
     if (!state) return;
     const mapState = await loadBookMapState(title, author);
-    const payload = { version: 2, title, author, state, mapState };
+    const payload: BookBuddyExport = {
+      version: 3,
+      title,
+      author,
+      container: state.container,
+      bookMeta: state.bookMeta!,
+      snapshots: state.snapshots,
+      result: state.result,
+      mapState,
+    };
 
     // Create .zip containing the .bookbuddy file
     const JSZip = (await import('jszip')).default;

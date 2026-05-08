@@ -51,20 +51,59 @@ const IMPORTANCE_ORDER: Record<Character['importance'], number> = {
 
 async function importBookBuddy(file: File): Promise<{ title: string; author: string }> {
   const text = await file.text();
-  const payload = JSON.parse(text) as Partial<BookBuddyExport>;
-  if (!payload.title || !payload.author || payload.version !== 3) {
-    throw new Error('Invalid or unrecognised .bookbuddy file. Only v3 format is supported.');
+  const payload = JSON.parse(text) as { version?: number; title?: string; author?: string } & Record<string, unknown>;
+  if (!payload.title || !payload.author) {
+    throw new Error('Invalid .bookbuddy file: missing title or author.');
   }
-  const state: StoredBookState = {
-    lastAnalyzedIndex: payload.snapshots?.length ? Math.max(...payload.snapshots.map((s) => s.index)) : -2,
-    result: payload.result ?? { characters: [], summary: '' },
-    snapshots: payload.snapshots ?? [],
-    bookMeta: payload.bookMeta,
-    chapterRange: undefined,
-    container: payload.container!,
-  };
+
+  let state: StoredBookState;
+  let mapState: MapState | null = null;
+
+  if (payload.version === 3) {
+    const v3 = payload as unknown as BookBuddyExport;
+    state = {
+      lastAnalyzedIndex: v3.snapshots?.length ? Math.max(...v3.snapshots.map((s) => s.index)) : -2,
+      result: v3.result ?? { characters: [], summary: '' },
+      snapshots: v3.snapshots ?? [],
+      bookMeta: v3.bookMeta,
+      chapterRange: undefined,
+      container: v3.container,
+    };
+    mapState = v3.mapState ?? null;
+  } else if (payload.version === 2 && payload.state && typeof payload.state === 'object') {
+    // Legacy v2 export (still produced by some library submissions). Migrate to v3 shape.
+    const s = payload.state as Partial<StoredBookState> & {
+      excludedChapters?: number[];
+      parentArcs?: ParentArc[];
+    };
+    const chapterCount = s.bookMeta?.chapters?.length ?? 0;
+    const container: BookContainer = s.container ?? {
+      books: [{
+        index: 0,
+        title: payload.title,
+        chapterStart: 0,
+        chapterEnd: Math.max(0, chapterCount - 1),
+        excludedChapters: s.excludedChapters ?? [],
+        confirmed: false,
+        ...(s.parentArcs ? { parentArcs: s.parentArcs } : {}),
+      }],
+      unassignedChapters: [],
+    };
+    state = {
+      lastAnalyzedIndex: s.lastAnalyzedIndex ?? (s.snapshots?.length ? Math.max(...s.snapshots.map((sn) => sn.index)) : -2),
+      result: s.result ?? { characters: [], summary: '' },
+      snapshots: s.snapshots ?? [],
+      bookMeta: s.bookMeta,
+      chapterRange: undefined,
+      container,
+    };
+    mapState = (payload.mapState as MapState | null | undefined) ?? null;
+  } else {
+    throw new Error('Invalid or unrecognised .bookbuddy file.');
+  }
+
   await saveBookState(payload.title, payload.author, state);
-  if (payload.mapState) await saveBookMapState(payload.title, payload.author, payload.mapState);
+  if (mapState) await saveBookMapState(payload.title, payload.author, mapState);
   return { title: payload.title, author: payload.author };
 }
 

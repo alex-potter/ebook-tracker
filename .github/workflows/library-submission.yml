@@ -71,12 +71,23 @@ jobs:
             if (!data.title || typeof data.title !== 'string') errors.push('missing or invalid field: title');
             if (!data.author || typeof data.author !== 'string') errors.push('missing or invalid field: author');
             if (data.version === undefined) errors.push('missing field: version');
-            if (!data.state) errors.push('missing field: state');
-            if (data.state && !data.state.result) errors.push('missing field: state.result');
-            if (data.state?.result) {
-              if (!Array.isArray(data.state.result.characters)) errors.push('missing or invalid field: state.result.characters');
-              if (!Array.isArray(data.state.result.locations)) errors.push('missing or invalid field: state.result.locations');
-              if (!Array.isArray(data.state.result.arcs)) errors.push('missing or invalid field: state.result.arcs');
+
+            // v3 has flat fields (result, snapshots, container, bookMeta).
+            // v2 wrapped everything inside data.state. Accept either.
+            const result = data.version === 3 ? data.result : data.state?.result;
+            if (data.version === 3) {
+              if (!data.result) errors.push('missing field: result');
+              if (!data.container) errors.push('missing field: container');
+            } else if (data.version === 2) {
+              if (!data.state) errors.push('missing field: state');
+              if (data.state && !data.state.result) errors.push('missing field: state.result');
+            } else {
+              errors.push('unsupported version: ' + data.version);
+            }
+            if (result) {
+              if (!Array.isArray(result.characters)) errors.push('missing or invalid field: result.characters');
+              if (!Array.isArray(result.locations)) errors.push('missing or invalid field: result.locations');
+              if (!Array.isArray(result.arcs)) errors.push('missing or invalid field: result.arcs');
             }
 
             if (errors.length > 0) {
