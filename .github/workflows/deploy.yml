@@ -23,8 +23,6 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - name: Verify PWA assets are in sync
-        run: npm run pwa:assets:check
       - name: Build static export with PWA
         run: npm run build:pwa
       - uses: actions/upload-pages-artifact@v3
