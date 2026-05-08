@@ -140,14 +140,14 @@ export default function ChatPanel({
 
       {/* Panel */}
       <div
-        className="flex flex-col bg-white dark:bg-zinc-900 border-t sm:border-t-0 sm:border-l border-stone-200 dark:border-zinc-800 w-full sm:w-96 h-[75vh] sm:h-full shadow-2xl"
+        className="flex flex-col bg-paper-raised border-t sm:border-t-0 sm:border-l border-border w-full sm:w-96 h-[75vh] sm:h-full shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-stone-200 dark:border-zinc-800 flex-shrink-0">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-stone-800 dark:text-zinc-200 truncate">Ask about your book</p>
-            <p className="text-xs text-stone-400 dark:text-zinc-500 truncate">
+            <p className="text-sm font-semibold text-ink truncate">Ask about your book</p>
+            <p className="text-xs text-ink-dim truncate">
               {isLocalProvider ? 'On-device AI · ' : 'Spoiler-free · '}knows ch. 1–{chaptersRead} of {totalChapters}
             </p>
           </div>
@@ -155,14 +155,14 @@ export default function ChatPanel({
             {messages.length > 0 && (
               <button
                 onClick={() => setMessages([])}
-                className="text-xs text-stone-400 dark:text-zinc-600 hover:text-stone-600 dark:hover:text-zinc-400 transition-colors"
+                className="text-xs text-ink-dim hover:text-ink-soft transition-colors"
               >
                 Clear
               </button>
             )}
             <button
               onClick={onClose}
-              className="text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors text-lg leading-none"
+              className="text-ink-dim hover:text-ink transition-colors text-lg leading-none"
             >
               ✕
             </button>
@@ -173,7 +173,7 @@ export default function ChatPanel({
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
           {messages.length === 0 && (
             <div className="space-y-4">
-              <p className="text-xs text-stone-400 dark:text-zinc-500 text-center">
+              <p className="text-xs text-ink-dim text-center">
                 Ask anything about what you&apos;ve read — no spoilers.
               </p>
               <div className="space-y-2">
@@ -181,7 +181,7 @@ export default function ChatPanel({
                   <button
                     key={s}
                     onClick={() => handleSend(s)}
-                    className="w-full text-left px-3 py-2 text-xs text-stone-500 dark:text-zinc-400 bg-stone-50 dark:bg-zinc-800 hover:bg-stone-100 dark:hover:bg-zinc-700 border border-stone-200 dark:border-zinc-700 rounded-lg transition-colors"
+                    className="w-full text-left px-3 py-2 text-xs text-ink-soft bg-paper hover:bg-paper-dark border border-border rounded-lg transition-colors"
                   >
                     {s}
                   </button>
@@ -195,8 +195,8 @@ export default function ChatPanel({
               <div
                 className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
                   msg.role === 'user'
-                    ? 'bg-amber-500 text-zinc-900 rounded-br-sm'
-                    : 'bg-stone-100 dark:bg-zinc-800 text-stone-800 dark:text-zinc-200 rounded-bl-sm'
+                    ? 'bg-rust text-white rounded-br-sm'
+                    : 'bg-paper text-ink rounded-bl-sm'
                 }`}
               >
                 {msg.content}
@@ -206,14 +206,14 @@ export default function ChatPanel({
 
           {loading && (
             <div className="flex justify-start">
-              <div className="bg-stone-100 dark:bg-zinc-800 rounded-2xl rounded-bl-sm px-4 py-3">
+              <div className="bg-paper rounded-2xl rounded-bl-sm px-4 py-3">
                 {isLocalProvider && messages.length <= 1 && (
-                  <p className="text-[10px] text-stone-400 dark:text-zinc-500 mb-1">Loading AI model...</p>
+                  <p className="text-[10px] text-ink-dim mb-1">Loading AI model...</p>
                 )}
                 <div className="flex gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-stone-400 dark:bg-zinc-500 animate-bounce [animation-delay:0ms]" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-stone-400 dark:bg-zinc-500 animate-bounce [animation-delay:150ms]" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-stone-400 dark:bg-zinc-500 animate-bounce [animation-delay:300ms]" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-ink-dim animate-bounce [animation-delay:0ms]" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-ink-dim animate-bounce [animation-delay:150ms]" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-ink-dim animate-bounce [animation-delay:300ms]" />
                 </div>
               </div>
             </div>
@@ -227,7 +227,7 @@ export default function ChatPanel({
         </div>
 
         {/* Input */}
-        <div className="flex-shrink-0 border-t border-stone-200 dark:border-zinc-800 px-3 py-3">
+        <div className="flex-shrink-0 border-t border-border px-3 py-3">
           <div className="flex items-end gap-2">
             <textarea
               ref={inputRef}
@@ -236,18 +236,18 @@ export default function ChatPanel({
               onKeyDown={handleKeyDown}
               placeholder="Ask about characters, plot, locations…"
               rows={1}
-              className="flex-1 resize-none bg-stone-100 dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-xl px-3 py-2 text-sm text-stone-800 dark:text-zinc-200 placeholder-stone-400 dark:placeholder-zinc-600 focus:outline-none focus:border-stone-400 dark:focus:border-zinc-500 max-h-32 overflow-y-auto"
+              className="flex-1 resize-none bg-paper border border-border rounded-xl px-3 py-2 text-sm text-ink placeholder-ink-dim focus:outline-none focus:border-rust max-h-32 overflow-y-auto"
               style={{ fieldSizing: 'content' } as React.CSSProperties}
             />
             <button
               onClick={() => handleSend()}
               disabled={!input.trim() || loading}
-              className="flex-shrink-0 w-9 h-9 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-900 flex items-center justify-center transition-colors"
+              className="flex-shrink-0 w-9 h-9 rounded-xl bg-rust hover:bg-rust/90 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors"
             >
               ↑
             </button>
           </div>
-          <p className="text-[10px] text-stone-300 dark:text-zinc-700 mt-1.5 text-center">Enter to send · Shift+Enter for new line</p>
+          <p className="text-[10px] text-ink-dim mt-1.5 text-center">Enter to send · Shift+Enter for new line</p>
         </div>
       </div>
     </div>

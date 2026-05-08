@@ -30,7 +30,7 @@ function initials(name: string): string {
 const STATUS_DOT: Record<string, string> = {
   alive: 'bg-emerald-400',
   dead: 'bg-red-400',
-  unknown: 'bg-stone-400 dark:bg-zinc-500',
+  unknown: 'bg-ink-dim',
   uncertain: 'bg-amber-400',
 };
 
@@ -322,15 +322,15 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
     return (
       <div className="space-y-4">
         <div>
-          <label className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider">Name</label>
-          <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200 focus:border-stone-400 dark:focus:border-zinc-500" />
+          <label className="text-xs font-semibold text-ink-dim uppercase tracking-wider">Name</label>
+          <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-transparent outline-none border-border text-ink focus:border-rust" />
         </div>
         <div>
-          <label className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider">Parent Location</label>
+          <label className="text-xs font-semibold text-ink-dim uppercase tracking-wider">Parent Location</label>
           <select
             value={draft.parentLocation}
             onChange={(e) => setDraft({ ...draft, parentLocation: e.target.value })}
-            className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-white dark:bg-zinc-900 outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200 focus:border-stone-400 dark:focus:border-zinc-500"
+            className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-paper-raised outline-none border-border text-ink focus:border-rust"
           >
             <option value="">None</option>
             {(currentResult?.locations ?? [])
@@ -341,21 +341,21 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
           </select>
         </div>
         <div>
-          <label className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider">Aliases (comma-separated)</label>
-          <input value={draft.aliases} onChange={(e) => setDraft({ ...draft, aliases: e.target.value })} className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200 focus:border-stone-400 dark:focus:border-zinc-500" />
+          <label className="text-xs font-semibold text-ink-dim uppercase tracking-wider">Aliases (comma-separated)</label>
+          <input value={draft.aliases} onChange={(e) => setDraft({ ...draft, aliases: e.target.value })} className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-transparent outline-none border-border text-ink focus:border-rust" />
         </div>
         <div>
-          <label className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider">Description</label>
-          <textarea value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} rows={3} className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200 focus:border-stone-400 dark:focus:border-zinc-500 resize-none" />
+          <label className="text-xs font-semibold text-ink-dim uppercase tracking-wider">Description</label>
+          <textarea value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} rows={3} className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-transparent outline-none border-border text-ink focus:border-rust resize-none" />
         </div>
         <div>
-          <label className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider">Recent Events</label>
-          <textarea value={draft.recentEvents} onChange={(e) => setDraft({ ...draft, recentEvents: e.target.value })} rows={2} className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200 focus:border-stone-400 dark:focus:border-zinc-500 resize-none" />
+          <label className="text-xs font-semibold text-ink-dim uppercase tracking-wider">Recent Events</label>
+          <textarea value={draft.recentEvents} onChange={(e) => setDraft({ ...draft, recentEvents: e.target.value })} rows={2} className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-transparent outline-none border-border text-ink focus:border-rust resize-none" />
         </div>
         {/* Relationships */}
         <div>
           <div className="flex items-center justify-between">
-            <label className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider">Relationships</label>
+            <label className="text-xs font-semibold text-ink-dim uppercase tracking-wider">Relationships</label>
             <button onClick={() => setDraft({ ...draft, relationships: [...draft.relationships, { location: '', relationship: '' }] })} className="text-[10px] text-amber-500 hover:text-amber-400 font-medium">+ Add</button>
           </div>
           <div className="mt-1 space-y-1.5">
@@ -365,27 +365,27 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
                   value={rel.location}
                   onChange={(e) => { const rels = [...draft.relationships]; rels[i] = { ...rels[i], location: e.target.value }; setDraft({ ...draft, relationships: rels }); }}
                   placeholder="Location"
-                  className="flex-1 text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200"
+                  className="flex-1 text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-border text-ink"
                 />
                 <input
                   value={rel.relationship}
                   onChange={(e) => { const rels = [...draft.relationships]; rels[i] = { ...rels[i], relationship: e.target.value }; setDraft({ ...draft, relationships: rels }); }}
                   placeholder="Relationship"
-                  className="flex-1 text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200"
+                  className="flex-1 text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-border text-ink"
                 />
-                <button onClick={() => setDraft({ ...draft, relationships: draft.relationships.filter((_, j) => j !== i) })} className="text-stone-400 hover:text-red-400 text-xs flex-shrink-0">✕</button>
+                <button onClick={() => setDraft({ ...draft, relationships: draft.relationships.filter((_, j) => j !== i) })} className="text-ink-dim hover:text-danger text-xs flex-shrink-0">✕</button>
               </div>
             ))}
           </div>
         </div>
         {/* Action buttons */}
         <div className="flex gap-2 pt-2">
-          <button onClick={handleSaveEdit} className="flex-1 text-xs py-2 rounded-lg bg-amber-500 text-zinc-900 font-semibold hover:bg-amber-400 transition-colors">Save</button>
-          <button onClick={() => { setDraft(locToDraft({ name: locationName, aliases, parentLocation: currentLoc?.parentLocation, description, recentEvents, relationships })); setMode('view'); }} className="flex-1 text-xs py-2 rounded-lg border border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors">Cancel</button>
+          <button onClick={handleSaveEdit} className="flex-1 text-xs py-2 rounded-lg bg-rust text-white font-semibold hover:bg-rust/90 transition-colors">Save</button>
+          <button onClick={() => { setDraft(locToDraft({ name: locationName, aliases, parentLocation: currentLoc?.parentLocation, description, recentEvents, relationships })); setMode('view'); }} className="flex-1 text-xs py-2 rounded-lg border border-border text-ink-soft hover:text-ink transition-colors">Cancel</button>
         </div>
-        <div className="flex gap-2 border-t border-stone-200 dark:border-zinc-800 pt-3">
-          <button onClick={() => setMode('merge')} className="text-[11px] px-2.5 py-1 rounded-lg border border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:text-amber-500 hover:border-amber-500/40 transition-colors">Merge with...</button>
-          <button onClick={() => { const d = locToDraft({ name: locationName, aliases, parentLocation: currentLoc?.parentLocation, description, recentEvents, relationships }); setSplitA(d); setSplitB(d); setMode('split'); }} className="text-[11px] px-2.5 py-1 rounded-lg border border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:text-violet-400 hover:border-violet-400/40 transition-colors">Split into two...</button>
+        <div className="flex gap-2 border-t border-border pt-3">
+          <button onClick={() => setMode('merge')} className="text-[11px] px-2.5 py-1 rounded-lg border border-border text-ink-soft hover:text-rust hover:border-amber-500/40 transition-colors">Merge with...</button>
+          <button onClick={() => { const d = locToDraft({ name: locationName, aliases, parentLocation: currentLoc?.parentLocation, description, recentEvents, relationships }); setSplitA(d); setSplitB(d); setMode('split'); }} className="text-[11px] px-2.5 py-1 rounded-lg border border-border text-ink-soft hover:text-violet-400 hover:border-violet-400/40 transition-colors">Split into two...</button>
           <button onClick={() => setMode('delete')} className="ml-auto text-[11px] px-2.5 py-1 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors">Delete</button>
         </div>
       </div>
@@ -395,24 +395,24 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
   function renderSplitForm() {
     const renderHalf = (label: string, d: DraftLocation, setD: (d: DraftLocation) => void) => (
       <div className="flex-1 space-y-2">
-        <p className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider">{label}</p>
-        <input value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} placeholder="Name" className="w-full text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200" />
-        <input value={d.aliases} onChange={(e) => setD({ ...d, aliases: e.target.value })} placeholder="Aliases" className="w-full text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200" />
-        <textarea value={d.description} onChange={(e) => setD({ ...d, description: e.target.value })} placeholder="Description" rows={3} className="w-full text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200 resize-none" />
+        <p className="text-xs font-semibold text-ink-dim uppercase tracking-wider">{label}</p>
+        <input value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} placeholder="Name" className="w-full text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-border text-ink" />
+        <input value={d.aliases} onChange={(e) => setD({ ...d, aliases: e.target.value })} placeholder="Aliases" className="w-full text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-border text-ink" />
+        <textarea value={d.description} onChange={(e) => setD({ ...d, description: e.target.value })} placeholder="Description" rows={3} className="w-full text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-border text-ink resize-none" />
       </div>
     );
     const canConfirm = splitA.name.trim() && splitB.name.trim() && splitA.name.trim() !== splitB.name.trim();
     return (
       <div className="space-y-4">
-        <p className="text-xs text-stone-400 dark:text-zinc-500">Split <strong className="text-stone-700 dark:text-zinc-300">{locationName}</strong> into two locations.</p>
+        <p className="text-xs text-ink-dim">Split <strong className="text-ink">{locationName}</strong> into two locations.</p>
         <div className="flex gap-3">
           {renderHalf('Location A', splitA, setSplitA)}
-          <div className="w-px bg-stone-200 dark:bg-zinc-800 flex-shrink-0" />
+          <div className="w-px bg-paper flex-shrink-0" />
           {renderHalf('Location B', splitB, setSplitB)}
         </div>
         <div className="flex gap-2">
           <button onClick={handleSplit} disabled={!canConfirm} className="flex-1 text-xs py-2 rounded-lg bg-violet-500 text-white font-semibold hover:bg-violet-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Split</button>
-          <button onClick={() => setMode('edit')} className="flex-1 text-xs py-2 rounded-lg border border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors">Cancel</button>
+          <button onClick={() => setMode('edit')} className="flex-1 text-xs py-2 rounded-lg border border-border text-ink-soft hover:text-ink transition-colors">Cancel</button>
         </div>
       </div>
     );
@@ -421,11 +421,11 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
   function renderDeleteConfirm() {
     return (
       <div className="space-y-4 text-center py-4">
-        <p className="text-sm text-stone-700 dark:text-zinc-300">Delete <strong>{locationName}</strong>? This cannot be undone.</p>
-        <p className="text-xs text-stone-400 dark:text-zinc-500">Characters at this location will have their location set to &quot;Unknown&quot;.</p>
+        <p className="text-sm text-ink">Delete <strong>{locationName}</strong>? This cannot be undone.</p>
+        <p className="text-xs text-ink-dim">Characters at this location will have their location set to &quot;Unknown&quot;.</p>
         <div className="flex gap-2 justify-center">
           <button onClick={handleDelete} className="text-xs px-4 py-2 rounded-lg bg-red-500 text-white font-semibold hover:bg-red-400 transition-colors">Confirm Delete</button>
-          <button onClick={() => setMode('edit')} className="text-xs px-4 py-2 rounded-lg border border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors">Cancel</button>
+          <button onClick={() => setMode('edit')} className="text-xs px-4 py-2 rounded-lg border border-border text-ink-soft hover:text-ink transition-colors">Cancel</button>
         </div>
       </div>
     );
@@ -447,21 +447,21 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
         <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={mode !== 'view' ? () => setMode('view') : undefined} />
 
         <div
-          className="relative z-10 w-full max-w-lg max-h-[85vh] max-h-[85dvh] flex flex-col bg-white dark:bg-zinc-900 rounded-2xl border border-stone-200 dark:border-zinc-800 shadow-2xl"
+          className="relative z-10 w-full max-w-lg max-h-[85vh] max-h-[85dvh] flex flex-col bg-paper-raised rounded-2xl border border-border shadow-2xl font-serif"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex-shrink-0 p-6 border-b border-stone-200 dark:border-zinc-800 pb-0">
+          <div className="flex-shrink-0 p-6 border-b border-border pb-0">
             <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-stone-100 dark:bg-zinc-800 flex items-center justify-center text-2xl">
+              <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-paper flex items-center justify-center text-2xl">
                 📍
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
-                    <h2 className="text-lg font-bold text-stone-900 dark:text-zinc-100 leading-tight">{locationName}</h2>
+                    <h2 className="text-lg font-bold text-ink leading-tight">{locationName}</h2>
                     {aliases.length > 0 && (
-                      <p className="text-xs text-stone-400 dark:text-zinc-500 mt-0.5">aka {aliases.join(', ')}</p>
+                      <p className="text-xs text-ink-dim mt-0.5">aka {aliases.join(', ')}</p>
                     )}
                     {arc && (
                       <span className="inline-block mt-1 text-xs px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-400 border border-violet-500/20 font-medium">
@@ -473,7 +473,7 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
                     {canEdit && mode === 'view' && (
                       <button
                         onClick={() => { setDraft(locToDraft({ name: locationName, aliases, parentLocation: currentLoc?.parentLocation, description, recentEvents, relationships })); setMode('edit'); setTab('overview'); }}
-                        className="flex-shrink-0 text-stone-400 dark:text-zinc-600 hover:text-amber-500 transition-colors text-sm leading-none p-1"
+                        className="flex-shrink-0 text-ink-dim hover:text-rust transition-colors text-sm leading-none p-1"
                         title="Edit location"
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
@@ -481,7 +481,7 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
                     )}
                     <button
                       onClick={mode !== 'view' ? () => setMode('view') : onClose}
-                      className="flex-shrink-0 text-stone-400 dark:text-zinc-600 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors text-lg leading-none"
+                      className="flex-shrink-0 text-ink-dim hover:text-ink transition-colors text-lg leading-none"
                     >
                       ✕
                     </button>
@@ -495,7 +495,7 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
                       </span>
                     )}
                     {currentChars.length === 0 && (
-                      <span className="text-xs text-stone-400 dark:text-zinc-500">No characters currently here</span>
+                      <span className="text-xs text-ink-dim">No characters currently here</span>
                     )}
                   </div>
                 )}
@@ -513,8 +513,8 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
                     onClick={() => setTab(key as 'overview' | 'timeline')}
                     className={`px-4 py-2 text-xs font-medium border-b-2 transition-colors -mb-px ${
                       tab === key
-                        ? 'border-amber-500 text-amber-400'
-                        : 'border-transparent text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300'
+                        ? 'border-rust text-rust'
+                        : 'border-transparent text-ink-dim hover:text-ink'
                     }`}
                   >
                     {label}
@@ -540,16 +540,16 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
               <>
                 {description ? (
                   <section>
-                    <p className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider mb-1.5">About</p>
-                    <p className="text-sm text-stone-700 dark:text-zinc-300 leading-relaxed">{description}</p>
+                    <p className="text-xs font-semibold text-ink-dim uppercase tracking-wider mb-1.5">About</p>
+                    <p className="text-sm text-ink leading-relaxed">{description}</p>
                   </section>
                 ) : (
-                  <p className="text-sm text-stone-400 dark:text-zinc-600 italic">No description available — analyze more chapters to populate.</p>
+                  <p className="text-sm text-ink-dim italic">No description available — analyze more chapters to populate.</p>
                 )}
 
                 {currentChars.length > 0 && (
                   <section>
-                    <p className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider mb-2">Currently here</p>
+                    <p className="text-xs font-semibold text-ink-dim uppercase tracking-wider mb-2">Currently here</p>
                     <ul className="space-y-2">
                       {currentChars.map((c) => (
                         <li key={c.name} className="flex items-start gap-3">
@@ -560,13 +560,13 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
                             <div className="flex items-center gap-2">
                               <button
                                 onClick={(e) => { e.stopPropagation(); onEntityClick?.('character', c.name); }}
-                                className={`text-sm font-medium text-stone-800 dark:text-zinc-200 ${onEntityClick ? 'hover:underline cursor-pointer' : ''}`}
+                                className={`text-sm font-medium text-ink ${onEntityClick ? 'hover:underline cursor-pointer' : ''}`}
                                 disabled={!onEntityClick}
                               >{c.name}</button>
                               <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${STATUS_DOT[c.status] ?? STATUS_DOT.unknown}`} />
                             </div>
                             {c.recentEvents && (
-                              <p className="text-xs text-stone-400 dark:text-zinc-500 mt-0.5 line-clamp-2">{c.recentEvents}</p>
+                              <p className="text-xs text-ink-dim mt-0.5 line-clamp-2">{c.recentEvents}</p>
                             )}
                           </div>
                         </li>
@@ -577,13 +577,13 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
 
                 {relationships.length > 0 && (
                   <section>
-                    <p className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider mb-2">Related Places</p>
+                    <p className="text-xs font-semibold text-ink-dim uppercase tracking-wider mb-2">Related Places</p>
                     <ul className="space-y-2.5">
                       {relationships.map((r) => (
                         <li key={r.location}>
                           <button
                             onClick={(e) => { e.stopPropagation(); onEntityClick?.('location', r.location); }}
-                            className={`text-sm font-medium text-stone-700 dark:text-zinc-300 ${onEntityClick ? 'hover:underline cursor-pointer' : ''}`}
+                            className={`text-sm font-medium text-ink ${onEntityClick ? 'hover:underline cursor-pointer' : ''}`}
                             disabled={!onEntityClick}
                           >{r.location}</button>
                           <p className="text-xs text-violet-400 mt-0.5 leading-snug">{r.relationship}</p>
@@ -597,21 +597,21 @@ export default function LocationModal({ locationName, snapshots, chapterTitles, 
 
             {mode === 'view' && tab === 'timeline' && (
               <section>
-                <p className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider mb-4">
+                <p className="text-xs font-semibold text-ink-dim uppercase tracking-wider mb-4">
                   Visitor history · newest first
                 </p>
                 {timelineReversed.length === 0 ? (
-                  <p className="text-sm text-stone-400 dark:text-zinc-600 text-center py-6">No history yet.</p>
+                  <p className="text-sm text-ink-dim text-center py-6">No history yet.</p>
                 ) : (
-                  <ol className="relative border-l border-stone-200 dark:border-zinc-800 space-y-0">
+                  <ol className="relative border-l border-border space-y-0">
                     {timelineReversed.map((entry, i) => (
                       <li key={i} className="pl-5 pb-6 last:pb-0 relative">
-                        <span className="absolute -left-[4.5px] top-1.5 w-2 h-2 rounded-full bg-stone-200 dark:bg-zinc-700 border border-stone-300 dark:border-zinc-600" />
-                        <p className="text-[11px] font-semibold text-stone-400 dark:text-zinc-500 mb-2">
+                        <span className="absolute -left-[4.5px] top-1.5 w-2 h-2 rounded-full bg-border border border-border" />
+                        <p className="text-[11px] font-semibold text-ink-dim mb-2">
                           Ch. {entry.chapterIndex + 1}{chapterTitles?.[entry.chapterIndex] ? ` — ${chapterTitles[entry.chapterIndex]}` : ''}
                         </p>
                         {entry.locationEvents && (
-                          <p className="text-sm text-stone-700 dark:text-zinc-300 leading-relaxed mb-2">{entry.locationEvents}</p>
+                          <p className="text-sm text-ink leading-relaxed mb-2">{entry.locationEvents}</p>
                         )}
                         <div className="flex flex-wrap gap-1.5">
                           {entry.characters.map((c) => (

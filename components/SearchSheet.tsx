@@ -39,7 +39,7 @@ const TYPE_BADGE: Record<EntityType, { label: string; className: string }> = {
 const STATUS_BADGE_STYLES: Record<string, string> = {
   alive:     'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
   dead:      'bg-red-500/10 text-red-400 border-red-500/20',
-  unknown:   'bg-stone-200/50 dark:bg-zinc-700/50 text-stone-500 dark:text-zinc-400 border-stone-400/30 dark:border-zinc-600/30',
+  unknown:   'bg-stone-200/50 dark:bg-zinc-700/50 text-ink-soft border-stone-400/30 dark:border-zinc-600/30',
   uncertain: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
 };
 
@@ -186,13 +186,13 @@ export default function SearchSheet({ isOpen, onClose, onEntitySelect, character
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        className="fixed inset-x-0 bottom-0 z-50 flex flex-col bg-white dark:bg-zinc-900 rounded-t-2xl shadow-2xl transition-transform duration-300"
+        className="fixed inset-x-0 bottom-0 z-50 flex flex-col bg-paper-raised rounded-t-2xl shadow-2xl transition-transform duration-300"
         style={{ maxHeight: '70vh' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Drag handle */}
         <div className="flex justify-center pt-3 pb-1">
-          <div className="h-1 w-10 rounded-full bg-stone-300 dark:bg-zinc-700" />
+          <div className="h-1 w-10 rounded-full bg-border" />
         </div>
 
         {view === 'results' ? (
@@ -205,34 +205,34 @@ export default function SearchSheet({ isOpen, onClose, onEntitySelect, character
                 placeholder="Search characters, locations, arcs\u2026"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                className="w-full text-sm px-3 py-2 rounded-lg border bg-transparent outline-none transition-colors border-stone-300 dark:border-zinc-700 text-stone-700 dark:text-zinc-300 placeholder-stone-400 dark:placeholder-zinc-600 focus:border-stone-400 dark:focus:border-zinc-500"
+                className="w-full text-sm px-3 py-2 rounded-lg border bg-paper outline-none transition-colors border-border text-ink placeholder-ink-dim focus:border-rust"
               />
             </div>
 
             {/* Results list */}
             <div className="flex-1 overflow-y-auto px-3 pb-4">
               {allItems.length === 0 && (
-                <p className="text-sm text-stone-400 dark:text-zinc-600 text-center py-8">No entities to search yet</p>
+                <p className="text-sm text-ink-dim text-center py-8">No entities to search yet</p>
               )}
               {allItems.length > 0 && !query && (
-                <p className="text-sm text-stone-400 dark:text-zinc-600 text-center py-8">Type to search\u2026</p>
+                <p className="text-sm text-ink-dim text-center py-8">Type to search\u2026</p>
               )}
               {allItems.length > 0 && query && filtered.length === 0 && (
-                <p className="text-sm text-stone-400 dark:text-zinc-600 text-center py-8">No matches found</p>
+                <p className="text-sm text-ink-dim text-center py-8">No matches found</p>
               )}
               {query && filtered.map((item) => (
                 <button
                   key={`${item.type}-${item.name}`}
                   onClick={() => handleResultTap(item)}
-                  className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-stone-100 dark:hover:bg-zinc-800 active:bg-stone-200 dark:active:bg-zinc-700 transition-colors"
+                  className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-paper active:bg-paper-dark transition-colors"
                 >
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-stone-800 dark:text-zinc-200">{item.name}</span>
+                    <span className="text-sm font-medium text-ink">{item.name}</span>
                     <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${TYPE_BADGE[item.type].className}`}>
                       {TYPE_BADGE[item.type].label}
                     </span>
                   </div>
-                  <p className="text-[11px] text-stone-400 dark:text-zinc-600 line-clamp-1 mt-0.5">{item.description}</p>
+                  <p className="text-[11px] text-ink-dim line-clamp-1 mt-0.5">{item.description}</p>
                 </button>
               ))}
             </div>
@@ -243,7 +243,7 @@ export default function SearchSheet({ isOpen, onClose, onEntitySelect, character
             {/* Back button */}
             <button
               onClick={handleBack}
-              className="flex items-center gap-1 text-sm text-stone-500 dark:text-zinc-400 mb-3 active:text-stone-700 dark:active:text-zinc-200"
+              className="flex items-center gap-1 text-sm text-ink-soft mb-3 active:text-ink"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-4 w-4">
                 <path fillRule="evenodd" d="M9.78 4.22a.75.75 0 0 1 0 1.06L7.06 8l2.72 2.72a.75.75 0 1 1-1.06 1.06L5.47 8.53a.75.75 0 0 1 0-1.06l3.25-3.25a.75.75 0 0 1 1.06 0Z" clipRule="evenodd" />
@@ -252,10 +252,10 @@ export default function SearchSheet({ isOpen, onClose, onEntitySelect, character
             </button>
 
             {selected && (
-              <div className="rounded-xl border border-stone-200 dark:border-zinc-800 p-4">
+              <div className="rounded-xl border border-border p-4">
                 {/* Header */}
                 <div className="flex items-center gap-2 mb-3">
-                  <span className="text-base font-semibold text-stone-800 dark:text-zinc-200">{selected.name}</span>
+                  <span className="text-base font-semibold text-ink">{selected.name}</span>
                   <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${TYPE_BADGE[selected.type].className}`}>
                     {TYPE_BADGE[selected.type].label}
                   </span>
@@ -275,12 +275,12 @@ export default function SearchSheet({ isOpen, onClose, onEntitySelect, character
                       )}
                     </div>
                     {selected.currentLocation && (
-                      <p className="text-stone-500 dark:text-zinc-400">
-                        <span className="text-stone-400 dark:text-zinc-600 text-xs uppercase tracking-wider">Location </span>
+                      <p className="text-ink-soft">
+                        <span className="text-ink-dim text-xs uppercase tracking-wider">Location </span>
                         {selected.currentLocation}
                       </p>
                     )}
-                    <p className="text-stone-600 dark:text-zinc-400 line-clamp-3">{selected.description}</p>
+                    <p className="text-ink-soft line-clamp-3">{selected.description}</p>
                   </div>
                 )}
 
@@ -288,18 +288,18 @@ export default function SearchSheet({ isOpen, onClose, onEntitySelect, character
                 {selected.type === 'location' && (
                   <div className="space-y-2 text-sm">
                     {selected.parentLocation && (
-                      <p className="text-stone-500 dark:text-zinc-400">
-                        <span className="text-stone-400 dark:text-zinc-600 text-xs uppercase tracking-wider">Part of </span>
+                      <p className="text-ink-soft">
+                        <span className="text-ink-dim text-xs uppercase tracking-wider">Part of </span>
                         {selected.parentLocation}
                       </p>
                     )}
                     {selected.arc && (
-                      <p className="text-stone-500 dark:text-zinc-400">
-                        <span className="text-stone-400 dark:text-zinc-600 text-xs uppercase tracking-wider">Arc </span>
+                      <p className="text-ink-soft">
+                        <span className="text-ink-dim text-xs uppercase tracking-wider">Arc </span>
                         {selected.arc}
                       </p>
                     )}
-                    <p className="text-stone-600 dark:text-zinc-400 line-clamp-3">{selected.description}</p>
+                    <p className="text-ink-soft line-clamp-3">{selected.description}</p>
                   </div>
                 )}
 
@@ -318,14 +318,14 @@ export default function SearchSheet({ isOpen, onClose, onEntitySelect, character
                         </span>
                       )}
                     </div>
-                    <p className="text-stone-600 dark:text-zinc-400 line-clamp-3">{selected.description}</p>
+                    <p className="text-ink-soft line-clamp-3">{selected.description}</p>
                   </div>
                 )}
 
                 {/* View Details button */}
                 <button
                   onClick={handleViewDetails}
-                  className="mt-4 w-full py-2 rounded-lg bg-stone-800 dark:bg-zinc-700 text-white text-sm font-medium active:scale-[0.98] transition-transform"
+                  className="mt-4 w-full py-2 rounded-lg bg-rust text-white text-sm font-medium active:scale-[0.98] transition-transform"
                 >
                   View Details
                 </button>

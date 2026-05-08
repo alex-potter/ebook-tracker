@@ -685,7 +685,7 @@ export default function SubwayMap({ snapshots, currentCharacters = [], currentLo
     return (
       <div className="flex flex-col items-center justify-center h-full py-12 gap-2">
         <span className="text-3xl opacity-20">🗺️</span>
-        <p className="text-xs text-stone-400 dark:text-zinc-600">Analyze chapters to populate the map</p>
+        <p className="text-xs text-ink-dim">Analyze chapters to populate the map</p>
       </div>
     );
   }
@@ -819,20 +819,20 @@ export default function SubwayMap({ snapshots, currentCharacters = [], currentLo
   targetPosRef.current = charPositions;
 
   // Grid as a CSS background so it covers the full container, not just the SVG viewBox
-  const gridColor = isDark ? '%2327272a' : '%23e7e5e4';
+  const gridColor = isDark ? '%233a3028' : '%23d9c9ab';
   const gridBg = `url("data:image/svg+xml,%3Csvg width='30' height='30' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M 30 0 L 0 0 0 30' fill='none' stroke='${gridColor}' stroke-width='0.5'/%3E%3C/svg%3E")`;
 
-  // Theme-dependent SVG colors
-  const nodeFill = isDark ? '#18181b' : '#ffffff';
-  const labelFill = isDark ? '#e4e4e7' : '#1c1917';
+  // Theme-dependent SVG colors — use CSS custom properties from Tactile Paperback tokens
+  const nodeFill = 'var(--paper-raised)';
+  const labelFill = 'var(--ink)';
   const labelShadow = isDark ? '0 1px 4px #000, 0 0 8px #000' : '0 1px 3px rgba(255,255,255,0.8)';
-  const overflowFill = isDark ? '#27272a' : '#f5f5f4';
-  const overflowStroke = isDark ? '#52525b' : '#d6d3d1';
-  const overflowText = isDark ? '#a1a1aa' : '#78716c';
-  const zoneCircleFill = isDark ? 'white' : 'black';
+  const overflowFill = 'var(--paper-dark)';
+  const overflowStroke = 'var(--border)';
+  const overflowText = 'var(--ink-dim)';
+  const zoneCircleFill = 'var(--ink)';
 
   return (
-    <div className={`relative w-full h-full ${isDark ? 'bg-zinc-950' : 'bg-stone-50'}`} style={{ backgroundImage: gridBg }}>
+    <div className="relative w-full h-full bg-paper" style={{ backgroundImage: gridBg }}>
       {/* Character search overlay */}
       <div className="absolute top-2 right-2 z-20">
         <input
@@ -840,18 +840,14 @@ export default function SubwayMap({ snapshots, currentCharacters = [], currentLo
           placeholder="Find character…"
           value={charSearch}
           onChange={(e) => setCharSearch(e.target.value)}
-          className={`w-36 text-[11px] px-2.5 py-1.5 rounded-lg border outline-none transition-colors ${
-            isDark
-              ? 'bg-zinc-900/90 border-zinc-700 text-zinc-300 placeholder-zinc-600 focus:border-zinc-500'
-              : 'bg-white/90 border-stone-300 text-stone-700 placeholder-stone-400 focus:border-stone-400'
-          }`}
+          className="w-36 text-[11px] px-2.5 py-1.5 rounded-lg border outline-none transition-colors bg-paper-raised/90 border-border text-ink placeholder-ink-dim focus:border-rust font-serif"
         />
       </div>
       {/* Spinner shown while physics settles */}
       {!settled && (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2">
-          <div className={`w-5 h-5 rounded-full border-2 animate-spin ${isDark ? 'border-zinc-700 border-t-zinc-400' : 'border-stone-300 border-t-stone-500'}`} />
-          <p className={`text-[10px] ${isDark ? 'text-zinc-600' : 'text-stone-400'}`}>Laying out map…</p>
+          <div className="w-5 h-5 rounded-full border-2 animate-spin border-border border-t-ink-soft" />
+          <p className="text-[10px] text-ink-dim">Laying out map…</p>
         </div>
       )}
       <svg
@@ -907,7 +903,7 @@ export default function SubwayMap({ snapshots, currentCharacters = [], currentLo
                   textAnchor="end" dominantBaseline="central"
                   fontSize={9.5} fontWeight="700" letterSpacing="0.06em"
                   fill={arcColor} opacity={0.85}
-                  style={{ userSelect: 'none' }}
+                  style={{ userSelect: 'none', fontFamily: 'var(--font-newsreader), Georgia, serif' }}
                 >
                   {lane.label.toUpperCase()}
                 </text>
@@ -935,7 +931,7 @@ export default function SubwayMap({ snapshots, currentCharacters = [], currentLo
                   <text x={tx} y={LANE_MARGIN_TOP - 8}
                     textAnchor="middle" dominantBaseline="auto"
                     fontSize={7} fill={zoneCircleFill} opacity={0.22}
-                    style={{ userSelect: 'none' }}>
+                    style={{ userSelect: 'none', fontFamily: 'var(--font-jetbrains), monospace' }}>
                     Ch.{ch + 1}
                   </text>
                 </g>
@@ -1064,7 +1060,7 @@ export default function SubwayMap({ snapshots, currentCharacters = [], currentLo
             x={labelX} y={startY}
             textAnchor={labelAnchor} dominantBaseline="hanging"
             fontSize={LABEL_FONT} fontWeight="600" fill={labelFill}
-            style={{ textShadow: labelShadow, cursor: onLocationClick ? 'pointer' : 'default' }}
+            style={{ textShadow: labelShadow, cursor: onLocationClick ? 'pointer' : 'default', fontFamily: 'var(--font-newsreader), Georgia, serif' }}
             onClick={() => onLocationClick?.(n.id)}
           >
             {lines.map((line, i) => (
@@ -1088,15 +1084,15 @@ export default function SubwayMap({ snapshots, currentCharacters = [], currentLo
         return (
           <g>
             <rect x={PB_X} y={PB_Y} width={PB_W} height={PB_H} rx={6}
-              fill={isDark ? 'rgba(24,24,27,0.92)' : 'rgba(250,250,249,0.92)'}
-              stroke={isDark ? 'rgba(82,82,91,0.65)' : 'rgba(168,162,158,0.65)'}
+              fill="var(--paper-raised)" fillOpacity={0.92}
+              stroke="var(--border)" strokeOpacity={0.65}
               strokeWidth={1} strokeDasharray="4 3"
             />
             <text x={PB_X + PB_W / 2} y={PB_Y + 10}
               textAnchor="middle" dominantBaseline="central"
               fontSize={7} fontWeight="700" letterSpacing="0.07em"
-              fill={isDark ? '#71717a' : '#a8a29e'}
-              style={{ textTransform: 'uppercase', userSelect: 'none' }}>
+              fill="var(--ink-dim)"
+              style={{ textTransform: 'uppercase', userSelect: 'none', fontFamily: 'var(--font-newsreader), Georgia, serif' }}>
               In Transit
             </text>
             {pbExtra > 0 && pbPositions[MAX_SHOW] && (

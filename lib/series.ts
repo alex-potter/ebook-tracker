@@ -102,16 +102,18 @@ export function mergeToSingleBook(container: BookContainer, title?: string): Boo
   if (container.books.length <= 1) return container;
   const sorted = [...container.books].sort((a, b) => a.chapterStart - b.chapterStart);
   const allExcluded = sorted.flatMap((b) => b.excludedChapters);
+  // Previously unassigned chapters now fall within the merged range — exclude them
+  const excludedSet = new Set([...allExcluded, ...container.unassignedChapters]);
   const merged: BookDefinition = {
     index: 0,
     title: title ?? sorted[0].title,
     chapterStart: sorted[0].chapterStart,
     chapterEnd: sorted[sorted.length - 1].chapterEnd,
-    excludedChapters: allExcluded,
+    excludedChapters: [...excludedSet],
     confirmed: false,
     sourceEpub: sorted[0].sourceEpub,
   };
-  return { books: [merged], unassignedChapters: container.unassignedChapters };
+  return { books: [merged], unassignedChapters: [] };
 }
 
 /** Per-book display chapter number (1-based, skips excluded). */

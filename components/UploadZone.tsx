@@ -1,13 +1,12 @@
 'use client';
 
 import { useCallback, useState } from 'react';
+import BookBuddyIcon from './BookBuddyIcon';
 
 interface Props {
   onFile: (file: File) => void;
   parsing: boolean;
 }
-
-const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
 
 export default function UploadZone({ onFile, parsing }: Props) {
   const [dragging, setDragging] = useState(false);
@@ -59,7 +58,7 @@ export default function UploadZone({ onFile, parsing }: Props) {
           </>
         ) : (
           <>
-            <img src={`${basePath}/icon.svg`} alt="" className="w-12 h-12 mb-3 dark:invert" />
+            <BookBuddyIcon className="w-12 h-12 mb-3 text-[color:var(--rust)]" />
             <p className="text-stone-700 dark:text-zinc-300 font-semibold text-center px-4">Tap to open EPUB</p>
             <p className="text-stone-400 dark:text-zinc-600 text-sm mt-1 hidden sm:block">or drop a file here</p>
           </>

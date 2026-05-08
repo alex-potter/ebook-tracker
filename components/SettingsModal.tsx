@@ -141,20 +141,20 @@ export default function SettingsModal({ onClose }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onClick={onClose}>
       <div
-        className="bg-white dark:bg-zinc-900 border border-stone-200 dark:border-zinc-800 rounded-2xl w-full max-w-md p-6 space-y-5 max-h-[90vh] overflow-y-auto"
+        className="bg-paper-raised border border-border rounded-2xl w-full max-w-md p-6 space-y-5 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
-          <h2 className="font-bold text-stone-900 dark:text-zinc-100 text-base">AI Settings</h2>
-          <button onClick={onClose} className="text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors text-lg leading-none">✕</button>
+          <h2 className="font-bold text-ink text-base">AI Settings</h2>
+          <button onClick={onClose} className="text-ink-dim hover:text-ink transition-colors text-lg leading-none">✕</button>
         </div>
 
         <InstallButton />
 
         {/* Provider toggle */}
         <div>
-          <label className="block text-xs font-medium text-stone-400 dark:text-zinc-500 mb-2">Provider</label>
-          <div className={`grid gap-1 rounded-lg border border-stone-300 dark:border-zinc-700 p-1 ${IS_MOBILE ? 'grid-cols-3' : 'grid-cols-2'}`}>
+          <label className="block text-xs font-medium text-ink-dim mb-2">Provider</label>
+          <div className={`grid gap-1 rounded-lg border border-border p-1 ${IS_MOBILE ? 'grid-cols-3' : 'grid-cols-2'}`}>
             {([
               { value: 'ollama' as const, label: 'Ollama (local)' },
               { value: 'anthropic' as const, label: 'Anthropic' },
@@ -167,8 +167,8 @@ export default function SettingsModal({ onClose }: Props) {
                 onClick={() => set('provider', opt.value)}
                 className={`py-1.5 text-xs font-medium rounded-md transition-colors ${
                   settings.provider === opt.value
-                    ? 'bg-stone-200 dark:bg-zinc-700 text-stone-900 dark:text-zinc-100'
-                    : 'text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300'
+                    ? 'bg-paper-dark text-ink'
+                    : 'text-ink-dim hover:text-ink'
                 }`}
               >
                 {opt.label}
@@ -181,21 +181,21 @@ export default function SettingsModal({ onClose }: Props) {
         {settings.provider === 'ollama' && (
           <div className="space-y-3">
             <div>
-              <label className="block text-xs font-medium text-stone-400 dark:text-zinc-500 mb-1.5">Ollama Base URL</label>
+              <label className="block text-xs font-medium text-ink-dim mb-1.5">Ollama Base URL</label>
               <input
                 type="url"
                 value={settings.ollamaUrl}
                 onChange={(e) => set('ollamaUrl', e.target.value)}
                 placeholder="http://localhost:11434/v1"
-                className="w-full bg-stone-100 dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-stone-800 dark:text-zinc-200 focus:outline-none focus:border-amber-500/50"
+                className="w-full bg-paper border border-border rounded-lg px-3 py-2 text-sm text-ink focus:outline-none focus:border-rust"
               />
-              <p className="mt-1 text-xs text-stone-400 dark:text-zinc-600">
-                On mobile, use your PC&apos;s local IP. Requires <code className="text-stone-500 dark:text-zinc-500">OLLAMA_ORIGINS=*</code> — see setup guide below.
+              <p className="mt-1 text-xs text-ink-dim">
+                On mobile, use your PC&apos;s local IP. Requires <code className="text-ink-soft">OLLAMA_ORIGINS=*</code> — see setup guide below.
               </p>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-stone-400 dark:text-zinc-500 mb-1.5">Model</label>
+              <label className="block text-xs font-medium text-ink-dim mb-1.5">Model</label>
               <input
                 type="text"
                 value={settings.model}
@@ -209,7 +209,7 @@ export default function SettingsModal({ onClose }: Props) {
                   detectDebounceRef.current = setTimeout(() => detectContextLength(undefined, val), 400);
                 }}
                 placeholder="qwen2.5:14b"
-                className="w-full bg-stone-100 dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-stone-800 dark:text-zinc-200 focus:outline-none focus:border-amber-500/50"
+                className="w-full bg-paper border border-border rounded-lg px-3 py-2 text-sm text-ink focus:outline-none focus:border-rust"
               />
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {OLLAMA_MODELS.map((m) => (
@@ -222,7 +222,7 @@ export default function SettingsModal({ onClose }: Props) {
                       setDetectedCtx(null);
                       detectContextLength(undefined, m);
                     }}
-                    className={`px-2 py-0.5 rounded text-[11px] font-mono border transition-colors ${settings.model === m ? 'border-amber-500/50 bg-amber-500/10 text-amber-400' : 'border-stone-300 dark:border-zinc-700 text-stone-400 dark:text-zinc-600 hover:border-stone-400 dark:hover:border-zinc-500 hover:text-stone-600 dark:hover:text-zinc-400'}`}
+                    className={`px-2 py-0.5 rounded text-[11px] font-mono border transition-colors ${settings.model === m ? 'border-amber-500/50 bg-amber-500/10 text-amber-400' : 'border-border text-ink-dim hover:border-ink-soft hover:text-ink-soft'}`}
                   >
                     {m}
                   </button>
@@ -233,7 +233,7 @@ export default function SettingsModal({ onClose }: Props) {
             {/* Context Length */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-medium text-stone-400 dark:text-zinc-500">Context Length (tokens)</label>
+                <label className="block text-xs font-medium text-ink-dim">Context Length (tokens)</label>
                 {settings.ollamaContextLength && detectedCtx && settings.ollamaContextLength !== detectedCtx && (
                   <button
                     onClick={() => {
@@ -273,10 +273,10 @@ export default function SettingsModal({ onClose }: Props) {
                       setSaved(false);
                     }
                   }}
-                  className="w-24 bg-stone-100 dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-stone-800 dark:text-zinc-200 text-right font-mono focus:outline-none focus:border-amber-500/50"
+                  className="w-24 bg-paper border border-border rounded-lg px-2 py-1.5 text-xs text-ink text-right font-mono focus:outline-none focus:border-rust"
                 />
               </div>
-              <p className="mt-1 text-[10px] text-stone-400 dark:text-zinc-600">
+              <p className="mt-1 text-[10px] text-ink-dim">
                 {detectingCtx ? 'Detecting…' : detectError ? 'Could not detect — using default 4096. Adjust to match your Ollama setting.' : detectedCtx ? `Auto-detected: ${detectedCtx.toLocaleString()}` : 'Set this to match the context length in your Ollama app.'}
                 {settings.ollamaContextLength && detectedCtx && settings.ollamaContextLength !== detectedCtx && (
                   <span className="ml-1 text-amber-500/70">(overridden)</span>
@@ -285,44 +285,44 @@ export default function SettingsModal({ onClose }: Props) {
             </div>
 
             {/* Ollama Setup Guide */}
-            <div className="rounded-lg border border-stone-300 dark:border-zinc-700 overflow-hidden">
+            <div className="rounded-lg border border-border overflow-hidden">
               <button
                 type="button"
                 onClick={() => setGuideOpen(!guideOpen)}
-                className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-stone-500 dark:text-zinc-400 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors"
+                className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-ink-soft hover:text-ink transition-colors"
               >
                 <span>Ollama Setup Guide</span>
                 <span className="text-[10px]">{guideOpen ? '▲' : '▼'}</span>
               </button>
               {guideOpen && (
-                <div className="px-3 pb-3 space-y-2 text-xs text-stone-500 dark:text-zinc-400">
-                  <p>Ollama must allow cross-origin requests by setting <code className="text-stone-500 dark:text-zinc-500">OLLAMA_ORIGINS=*</code>. Since Ollama typically runs as a background service, set this as a persistent environment variable:</p>
+                <div className="px-3 pb-3 space-y-2 text-xs text-ink-soft">
+                  <p>Ollama must allow cross-origin requests by setting <code className="text-ink-soft">OLLAMA_ORIGINS=*</code>. Since Ollama typically runs as a background service, set this as a persistent environment variable:</p>
 
                   <div className="space-y-1.5">
-                    <p className="font-medium text-stone-600 dark:text-zinc-300">Windows:</p>
+                    <p className="font-medium text-ink">Windows:</p>
                     <p>Set via Settings &gt; System &gt; Environment Variables, or run:</p>
-                    <pre className="bg-stone-100 dark:bg-zinc-800 rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto">setx OLLAMA_ORIGINS &quot;*&quot;</pre>
+                    <pre className="bg-paper rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto">setx OLLAMA_ORIGINS &quot;*&quot;</pre>
                     <p>Then quit Ollama from the system tray and reopen it.</p>
 
-                    <p className="font-medium text-stone-600 dark:text-zinc-300">macOS:</p>
-                    <pre className="bg-stone-100 dark:bg-zinc-800 rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto">launchctl setenv OLLAMA_ORIGINS &quot;*&quot;</pre>
+                    <p className="font-medium text-ink">macOS:</p>
+                    <pre className="bg-paper rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto">launchctl setenv OLLAMA_ORIGINS &quot;*&quot;</pre>
                     <p>Then quit and reopen Ollama from the menu bar.</p>
 
-                    <p className="font-medium text-stone-600 dark:text-zinc-300">Linux (systemd):</p>
-                    <pre className="bg-stone-100 dark:bg-zinc-800 rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto whitespace-pre-wrap">{`sudo systemctl edit ollama\n# Add under [Service]:\n# Environment="OLLAMA_ORIGINS=*"\nsudo systemctl restart ollama`}</pre>
+                    <p className="font-medium text-ink">Linux (systemd):</p>
+                    <pre className="bg-paper rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto whitespace-pre-wrap">{`sudo systemctl edit ollama\n# Add under [Service]:\n# Environment="OLLAMA_ORIGINS=*"\nsudo systemctl restart ollama`}</pre>
 
-                    <p className="font-medium text-stone-600 dark:text-zinc-300">Docker:</p>
-                    <pre className="bg-stone-100 dark:bg-zinc-800 rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto">docker run -e OLLAMA_ORIGINS=* -p 11434:11434 ollama/ollama</pre>
+                    <p className="font-medium text-ink">Docker:</p>
+                    <pre className="bg-paper rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto">docker run -e OLLAMA_ORIGINS=* -p 11434:11434 ollama/ollama</pre>
                   </div>
 
                   <details className="mt-1">
-                    <summary className="cursor-pointer text-stone-400 dark:text-zinc-500 hover:text-stone-600 dark:hover:text-zinc-300 transition-colors">Manual terminal option</summary>
-                    <div className="mt-1.5 space-y-1.5 pl-2 border-l-2 border-stone-200 dark:border-zinc-700">
+                    <summary className="cursor-pointer text-ink-dim hover:text-ink transition-colors">Manual terminal option</summary>
+                    <div className="mt-1.5 space-y-1.5 pl-2 border-l-2 border-border">
                       <p>If you prefer to run Ollama manually, stop the background service first, then:</p>
-                      <p className="font-medium text-stone-600 dark:text-zinc-300">macOS / Linux:</p>
-                      <pre className="bg-stone-100 dark:bg-zinc-800 rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto">OLLAMA_ORIGINS=* ollama serve</pre>
-                      <p className="font-medium text-stone-600 dark:text-zinc-300">Windows (PowerShell):</p>
-                      <pre className="bg-stone-100 dark:bg-zinc-800 rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto">$env:OLLAMA_ORIGINS=&quot;*&quot;; ollama serve</pre>
+                      <p className="font-medium text-ink">macOS / Linux:</p>
+                      <pre className="bg-paper rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto">OLLAMA_ORIGINS=* ollama serve</pre>
+                      <p className="font-medium text-ink">Windows (PowerShell):</p>
+                      <pre className="bg-paper rounded px-2 py-1.5 font-mono text-[11px] overflow-x-auto">$env:OLLAMA_ORIGINS=&quot;*&quot;; ollama serve</pre>
                     </div>
                   </details>
                 </div>
@@ -336,7 +336,7 @@ export default function SettingsModal({ onClose }: Props) {
           <div className="space-y-3">
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-medium text-stone-400 dark:text-zinc-500">Anthropic API Key</label>
+                <label className="block text-xs font-medium text-ink-dim">Anthropic API Key</label>
                 <a
                   href="https://console.anthropic.com/settings/keys"
                   target="_blank"
@@ -351,22 +351,22 @@ export default function SettingsModal({ onClose }: Props) {
                 value={settings.anthropicKey}
                 onChange={(e) => set('anthropicKey', e.target.value)}
                 placeholder="sk-ant-…"
-                className="w-full bg-stone-100 dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-stone-800 dark:text-zinc-200 focus:outline-none focus:border-amber-500/50"
+                className="w-full bg-paper border border-border rounded-lg px-3 py-2 text-sm text-ink focus:outline-none focus:border-rust"
               />
-              <p className="mt-1 text-xs text-stone-400 dark:text-zinc-600">Stored on this device only — never sent to our servers.</p>
+              <p className="mt-1 text-xs text-ink-dim">Stored on this device only — never sent to our servers.</p>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-stone-400 dark:text-zinc-500 mb-1.5">Model</label>
+              <label className="block text-xs font-medium text-ink-dim mb-1.5">Model</label>
               <div className="space-y-1.5">
                 {ANTHROPIC_MODELS.map((m) => (
                   <button
                     key={m.id}
                     onClick={() => set('model', m.id)}
-                    className={`w-full text-left px-3 py-2 rounded-lg border text-sm transition-colors ${settings.model === m.id ? 'border-amber-500/50 bg-amber-500/10 text-amber-300' : 'border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:border-stone-400 dark:hover:border-zinc-600'}`}
+                    className={`w-full text-left px-3 py-2 rounded-lg border text-sm transition-colors ${settings.model === m.id ? 'border-amber-500/50 bg-amber-500/10 text-amber-300' : 'border-border text-ink-soft hover:border-ink-soft'}`}
                   >
                     <span className="font-mono text-xs">{m.id.split('-').slice(0, 3).join('-')}</span>
-                    <span className="ml-2 text-xs text-stone-400 dark:text-zinc-500">{m.label}</span>
+                    <span className="ml-2 text-xs text-ink-dim">{m.label}</span>
                   </button>
                 ))}
               </div>
@@ -379,7 +379,7 @@ export default function SettingsModal({ onClose }: Props) {
           <div className="space-y-3">
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-medium text-stone-400 dark:text-zinc-500">API Key</label>
+                <label className="text-xs font-medium text-ink-dim">API Key</label>
                 <a
                   href="https://aistudio.google.com/apikey"
                   target="_blank"
@@ -394,22 +394,22 @@ export default function SettingsModal({ onClose }: Props) {
                 value={settings.geminiKey}
                 onChange={(e) => set('geminiKey', e.target.value)}
                 placeholder="AIza..."
-                className="w-full bg-stone-100 dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-stone-800 dark:text-zinc-200 focus:outline-none focus:border-amber-500/50"
+                className="w-full bg-paper border border-border rounded-lg px-3 py-2 text-sm text-ink focus:outline-none focus:border-rust"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-stone-400 dark:text-zinc-500 mb-1.5">Model</label>
+              <label className="block text-xs font-medium text-ink-dim mb-1.5">Model</label>
               <select
                 value={settings.model}
                 onChange={(e) => set('model', e.target.value)}
-                className="w-full bg-stone-100 dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-stone-800 dark:text-zinc-200 focus:outline-none focus:border-amber-500/50"
+                className="w-full bg-paper border border-border rounded-lg px-3 py-2 text-sm text-ink focus:outline-none focus:border-rust"
               >
                 <option value="gemini-2.0-flash">Gemini 2.0 Flash (fast, recommended)</option>
                 <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash Lite (fastest)</option>
                 <option value="gemini-1.5-pro">Gemini 1.5 Pro (smartest)</option>
               </select>
             </div>
-            <p className="text-[10px] text-stone-400 dark:text-zinc-600">
+            <p className="text-[10px] text-ink-dim">
               Free tier — no credit card required. Your key is stored on this device only.
             </p>
           </div>
@@ -419,17 +419,17 @@ export default function SettingsModal({ onClose }: Props) {
         {settings.provider === 'openai-compatible' && (
           <div className="space-y-3">
             <div>
-              <label className="block text-xs font-medium text-stone-400 dark:text-zinc-500 mb-1.5">Provider Name</label>
+              <label className="block text-xs font-medium text-ink-dim mb-1.5">Provider Name</label>
               <input
                 type="text"
                 value={settings.openaiCompatibleName}
                 onChange={(e) => set('openaiCompatibleName', e.target.value)}
                 placeholder="e.g. Groq, OpenRouter"
-                className="w-full bg-stone-100 dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-stone-800 dark:text-zinc-200 focus:outline-none focus:border-amber-500/50"
+                className="w-full bg-paper border border-border rounded-lg px-3 py-2 text-sm text-ink focus:outline-none focus:border-rust"
               />
             </div>
             <div className="flex flex-wrap gap-1.5">
-              <span className="text-[10px] text-stone-400 dark:text-zinc-600 self-center">Quick setup:</span>
+              <span className="text-[10px] text-ink-dim self-center">Quick setup:</span>
               {[
                 { name: 'Groq', url: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile' },
                 { name: 'OpenRouter', url: 'https://openrouter.ai/api/v1', model: 'meta-llama/llama-3.3-70b-instruct:free' },
@@ -442,40 +442,40 @@ export default function SettingsModal({ onClose }: Props) {
                     set('openaiCompatibleUrl', preset.url);
                     set('model', preset.model);
                   }}
-                  className="px-2 py-0.5 text-[10px] rounded-full border border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:bg-stone-100 dark:hover:bg-zinc-800 transition-colors"
+                  className="px-2 py-0.5 text-[10px] rounded-full border border-border text-ink-soft hover:bg-paper transition-colors"
                 >
                   {preset.name}
                 </button>
               ))}
             </div>
             <div>
-              <label className="block text-xs font-medium text-stone-400 dark:text-zinc-500 mb-1.5">Base URL</label>
+              <label className="block text-xs font-medium text-ink-dim mb-1.5">Base URL</label>
               <input
                 type="url"
                 value={settings.openaiCompatibleUrl}
                 onChange={(e) => set('openaiCompatibleUrl', e.target.value)}
                 placeholder="https://api.groq.com/openai/v1"
-                className="w-full bg-stone-100 dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-stone-800 dark:text-zinc-200 focus:outline-none focus:border-amber-500/50"
+                className="w-full bg-paper border border-border rounded-lg px-3 py-2 text-sm text-ink focus:outline-none focus:border-rust"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-stone-400 dark:text-zinc-500 mb-1.5">API Key</label>
+              <label className="block text-xs font-medium text-ink-dim mb-1.5">API Key</label>
               <input
                 type="password"
                 value={settings.openaiCompatibleKey}
                 onChange={(e) => set('openaiCompatibleKey', e.target.value)}
                 placeholder="sk-... or gsk-..."
-                className="w-full bg-stone-100 dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-stone-800 dark:text-zinc-200 focus:outline-none focus:border-amber-500/50"
+                className="w-full bg-paper border border-border rounded-lg px-3 py-2 text-sm text-ink focus:outline-none focus:border-rust"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-stone-400 dark:text-zinc-500 mb-1.5">Model</label>
+              <label className="block text-xs font-medium text-ink-dim mb-1.5">Model</label>
               <input
                 type="text"
                 value={settings.model}
                 onChange={(e) => set('model', e.target.value)}
                 placeholder="llama-3.3-70b-versatile"
-                className="w-full bg-stone-100 dark:bg-zinc-800 border border-stone-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-stone-800 dark:text-zinc-200 focus:outline-none focus:border-amber-500/50"
+                className="w-full bg-paper border border-border rounded-lg px-3 py-2 text-sm text-ink focus:outline-none focus:border-rust"
               />
             </div>
           </div>
@@ -485,7 +485,7 @@ export default function SettingsModal({ onClose }: Props) {
         {settings.provider === 'local' && (
           <div className="space-y-3">
             {freeSpace !== null && (
-              <p className="text-[10px] text-stone-400 dark:text-zinc-600">
+              <p className="text-[10px] text-ink-dim">
                 Free space: {freeSpace > 1024 * 1024 * 1024
                   ? `${(freeSpace / (1024 * 1024 * 1024)).toFixed(1)} GB`
                   : `${(freeSpace / (1024 * 1024)).toFixed(0)} MB`}
@@ -504,13 +504,13 @@ export default function SettingsModal({ onClose }: Props) {
                     className={`rounded-lg border p-3 transition-colors ${
                       isSelected
                         ? 'border-amber-500/50 bg-amber-500/10'
-                        : 'border-stone-300 dark:border-zinc-700'
+                        : 'border-border'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-stone-800 dark:text-zinc-200">{entry.name}</p>
-                        <p className="text-[10px] text-stone-400 dark:text-zinc-500">
+                        <p className="text-sm font-medium text-ink">{entry.name}</p>
+                        <p className="text-[10px] text-ink-dim">
                           {entry.sizeLabel} · {entry.description}
                         </p>
                       </div>
@@ -520,7 +520,7 @@ export default function SettingsModal({ onClose }: Props) {
                             {!isSelected && (
                               <button
                                 onClick={() => set('localModel', entry.fileName)}
-                                className="px-2 py-1 text-[10px] rounded border border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:border-amber-500/50 hover:text-amber-400 transition-colors"
+                                className="px-2 py-1 text-[10px] rounded border border-border text-ink-soft hover:border-amber-500/50 hover:text-amber-400 transition-colors"
                               >
                                 Select
                               </button>
@@ -582,7 +582,7 @@ export default function SettingsModal({ onClose }: Props) {
                                 setDownloadProgress(null);
                               }
                             }}
-                            className="px-2 py-1 text-[10px] rounded border border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:border-amber-500/50 hover:text-amber-400 transition-colors"
+                            className="px-2 py-1 text-[10px] rounded border border-border text-ink-soft hover:border-amber-500/50 hover:text-amber-400 transition-colors"
                           >
                             Download
                           </button>
@@ -593,13 +593,13 @@ export default function SettingsModal({ onClose }: Props) {
                     {/* Download progress bar */}
                     {isDownloading && downloadProgress && (
                       <div className="mt-2">
-                        <div className="h-1.5 rounded-full bg-stone-200 dark:bg-zinc-700 overflow-hidden">
+                        <div className="h-1.5 rounded-full bg-paper-dark overflow-hidden">
                           <div
                             className="h-full rounded-full bg-amber-500 transition-all duration-300"
                             style={{ width: `${Math.round((downloadProgress.bytesDownloaded / downloadProgress.totalBytes) * 100)}%` }}
                           />
                         </div>
-                        <p className="text-[10px] text-stone-400 dark:text-zinc-500 mt-1">
+                        <p className="text-[10px] text-ink-dim mt-1">
                           {(downloadProgress.bytesDownloaded / (1024 * 1024)).toFixed(0)} / {(downloadProgress.totalBytes / (1024 * 1024)).toFixed(0)} MB
                           ({Math.round((downloadProgress.bytesDownloaded / downloadProgress.totalBytes) * 100)}%)
                         </p>
@@ -614,7 +614,7 @@ export default function SettingsModal({ onClose }: Props) {
               <p className="text-xs text-red-400 text-center">{localError}</p>
             )}
 
-            <p className="text-[10px] text-stone-400 dark:text-zinc-600 text-center">
+            <p className="text-[10px] text-ink-dim text-center">
               Chat only — book analysis requires a cloud provider.
               <br />Models run entirely on your device. No data is sent anywhere.
             </p>
@@ -627,7 +627,7 @@ export default function SettingsModal({ onClose }: Props) {
           <button
             onClick={handleTest}
             disabled={testState === 'testing'}
-            className="w-full py-2 rounded-lg text-sm font-medium border border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:border-stone-400 dark:hover:border-zinc-600 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-2 rounded-lg text-sm font-medium border border-border text-ink-soft hover:border-ink-soft hover:text-ink transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {testState === 'testing' ? 'Testing…' : 'Test connection'}
           </button>
@@ -658,7 +658,7 @@ export default function SettingsModal({ onClose }: Props) {
 
         <button
           onClick={handleSave}
-          className="w-full py-2.5 rounded-lg text-sm font-semibold bg-amber-500 text-zinc-900 hover:bg-amber-400 transition-colors"
+          className="w-full py-2.5 rounded-lg text-sm font-semibold bg-rust text-white hover:bg-rust/90 transition-colors"
         >
           {saved ? 'Saved ✓' : 'Save Settings'}
         </button>

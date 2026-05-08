@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { Fragment, useRef, useState, useEffect, useCallback } from 'react';
 import { motion, useMotionValue, useTransform, animate, PanInfo } from 'framer-motion';
 import type { EbookChapter, Snapshot } from '@/types';
 
@@ -21,42 +21,49 @@ export default function PullUpSheet({ chapters, currentIndex, snapshots, onChapt
   const [search, setSearch] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const y = useMotionValue(0);
+  const initialY = typeof window !== 'undefined' ? window.innerHeight * 0.85 - PEEK_HEIGHT : 624;
+  const y = useMotionValue(initialY);
 
   const snapshotSet = new Set(snapshots.map((s) => s.index));
 
-  const getSnapHeight = useCallback((point: SnapPoint) => {
+  const getFullHeight = useCallback(() => {
     const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
-    switch (point) {
-      case 'peek': return PEEK_HEIGHT;
-      case 'half': return vh * 0.45;
-      case 'full': return vh * 0.85;
-    }
+    return vh * 0.85;
   }, []);
 
+  const getSnapY = useCallback((point: SnapPoint) => {
+    const fullH = getFullHeight();
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
+    switch (point) {
+      case 'peek': return fullH - PEEK_HEIGHT;
+      case 'half': return fullH - vh * 0.45;
+      case 'full': return 0;
+    }
+  }, [getFullHeight]);
+
   useEffect(() => {
-    const target = getSnapHeight(snap);
-    animate(y, -(target - PEEK_HEIGHT), {
+    animate(y, getSnapY(snap), {
       type: 'spring',
       stiffness: 400,
       damping: 35,
     });
-  }, [snap, y, getSnapHeight]);
+  }, [snap, y, getSnapY]);
 
   const handleDragEnd = (_: unknown, info: PanInfo) => {
     const velocity = info.velocity.y;
     const currentY = y.get();
-    const halfH = getSnapHeight('half');
-    const fullH = getSnapHeight('full');
+    const fullH = getFullHeight();
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
+    const halfThreshold = fullH - vh * 0.45;
+    const peekThreshold = fullH - PEEK_HEIGHT;
 
     if (velocity > 300) {
       setSnap(snap === 'full' ? 'half' : 'peek');
     } else if (velocity < -300) {
       setSnap(snap === 'peek' ? 'half' : 'full');
     } else {
-      const absY = Math.abs(currentY) + PEEK_HEIGHT;
-      if (absY > (halfH + fullH) / 2) setSnap('full');
-      else if (absY > (PEEK_HEIGHT + halfH) / 2) setSnap('half');
+      if (currentY < halfThreshold / 2) setSnap('full');
+      else if (currentY < (halfThreshold + peekThreshold) / 2) setSnap('half');
       else setSnap('peek');
     }
   };
@@ -66,7 +73,8 @@ export default function PullUpSheet({ chapters, currentIndex, snapshots, onChapt
     setSnap('peek');
   };
 
-  const backdrop = useTransform(y, [0, -(getSnapHeight('full') - PEEK_HEIGHT)], [0, 0.3]);
+  const fullH = getFullHeight();
+  const backdrop = useTransform(y, [fullH - PEEK_HEIGHT, 0], [0, 0.3]);
 
   const filtered = chapters.filter((ch) => {
     if (visibleChapterOrders && !visibleChapterOrders.has(ch.order)) return false;
@@ -88,24 +96,24 @@ export default function PullUpSheet({ chapters, currentIndex, snapshots, onChapt
       )}
       <motion.div
         ref={containerRef}
-        className="fixed bottom-0 left-0 right-0 z-40 bg-paper-raised rounded-t-2xl border-t border-border shadow-lg"
+        className="fixed bottom-0 left-0 right-0 z-40 bg-paper-raised rounded-t-2xl border-t border-border shadow-lg lg:left-16 flex flex-col"
         style={{
           y,
-          height: getSnapHeight('full'),
+          height: fullH,
           bottom: 'env(safe-area-inset-bottom)',
           marginBottom: 56,
         }}
         drag="y"
-        dragConstraints={{ top: -(getSnapHeight('full') - PEEK_HEIGHT), bottom: 0 }}
+        dragConstraints={{ top: 0, bottom: fullH - PEEK_HEIGHT }}
         dragElastic={0.1}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex justify-center pt-2 pb-1 cursor-grab active:cursor-grabbing">
+        <div className="flex justify-center pt-2 pb-1 cursor-grab active:cursor-grabbing flex-shrink-0">
           <div className="w-10 h-1 rounded-full bg-border" />
         </div>
 
         <div
-          className="px-4 pb-2 flex items-center justify-between"
+          className="px-4 pb-2 flex items-center justify-between flex-shrink-0"
           onClick={() => setSnap(snap === 'peek' ? 'half' : 'peek')}
         >
           <div className="min-w-0">
@@ -136,30 +144,44 @@ export default function PullUpSheet({ chapters, currentIndex, snapshots, onChapt
               </div>
             )}
             <div ref={listRef} className="flex-1 overflow-y-auto px-2 pb-4">
-              {filtered.map((ch) => {
-                const idx = chapters.indexOf(ch);
-                const isCurrent = idx === currentIndex;
-                const hasSnapshot = snapshotSet.has(idx);
-                return (
-                  <button
-                    key={ch.id}
-                    onClick={() => handleChapterTap(idx)}
-                    className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center gap-3 transition-colors ${
-                      isCurrent ? 'bg-rust/10' : 'hover:bg-paper-dark'
-                    }`}
-                  >
-                    <span className={`font-mono text-xs w-8 text-right flex-shrink-0 ${isCurrent ? 'text-rust font-bold' : 'text-ink-dim'}`}>
-                      {idx + 1}
-                    </span>
-                    <span className={`text-sm font-serif truncate flex-1 ${isCurrent ? 'text-rust font-medium' : 'text-ink'}`}>
-                      {ch.title}
-                    </span>
-                    {hasSnapshot && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-teal flex-shrink-0" title="Snapshot" />
-                    )}
-                  </button>
-                );
-              })}
+              {(() => {
+                const isOmnibus =
+                  chapters.some((c) => c.bookIndex !== undefined) &&
+                  new Set(chapters.map((c) => c.bookIndex)).size > 1;
+                let lastBookIdx: number | undefined;
+                return filtered.map((ch) => {
+                  const idx = chapters.indexOf(ch);
+                  const isCurrent = idx === currentIndex;
+                  const hasSnapshot = snapshotSet.has(idx);
+                  const showHeader = isOmnibus && ch.bookIndex !== lastBookIdx;
+                  lastBookIdx = ch.bookIndex;
+                  return (
+                    <Fragment key={ch.id}>
+                      {showHeader && ch.bookTitle && (
+                        <div className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-dim">
+                          {ch.bookTitle}
+                        </div>
+                      )}
+                      <button
+                        onClick={() => handleChapterTap(idx)}
+                        className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center gap-3 transition-colors ${
+                          isCurrent ? 'bg-rust/10' : 'hover:bg-paper-dark'
+                        }`}
+                      >
+                        <span className={`font-mono text-xs w-8 text-right flex-shrink-0 ${isCurrent ? 'text-rust font-bold' : 'text-ink-dim'}`}>
+                          {idx + 1}
+                        </span>
+                        <span className={`text-sm font-serif truncate flex-1 ${isCurrent ? 'text-rust font-medium' : 'text-ink'}`}>
+                          {ch.title}
+                        </span>
+                        {hasSnapshot && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-teal flex-shrink-0" title="Snapshot" />
+                        )}
+                      </button>
+                    </Fragment>
+                  );
+                });
+              })()}
             </div>
           </div>
         )}

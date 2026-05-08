@@ -24,7 +24,7 @@ import LibrarySubmitModal from '@/components/LibrarySubmitModal';
 import BookmarkModal from '@/components/BookmarkModal';
 import BookStructureEditor from '@/components/BookStructureEditor';
 import { useDerivedEntities } from '@/lib/use-derived-entities';
-import { buildContainer, getActiveParentArcs, getStaleBooks, computeArcGroupingHash, getExcludedOrders } from '@/lib/series';
+import { buildContainer, getActiveParentArcs, getStaleBooks, computeArcGroupingHash, getExcludedOrders, findBookForChapter } from '@/lib/series';
 import { generateParentArcs, generateSeriesArcs } from '@/lib/generate-arcs';
 import SearchFAB from '@/components/SearchFAB';
 import SearchSheet from '@/components/SearchSheet';
@@ -382,7 +382,7 @@ export default function Home() {
   const [parseError, setParseError] = useState<string | null>(null);
 
   const [pendingBook, setPendingBook] = useState<ParsedEbook | null>(null);
-  const [seriesOptions, setSeriesOptions] = useState<SavedBookEntry[]>([]);
+  const [seriesOptions, setSeriesOptions] = useState<Array<SavedBookEntry & { hasContainer: boolean }>>([]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [result, setResult] = useState<AnalysisResult | null>(null);
@@ -396,6 +396,7 @@ export default function Home() {
   const [importError, setImportError] = useState<string | null>(null);
   const [myBooksRev, setMyBooksRev] = useState(0);
   const [parentArcsRev, setParentArcsRev] = useState(0);
+  const [containerRev, setContainerRev] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [showWorkshop, setShowWorkshop] = useState(false);
   const [submitBook, setSubmitBook] = useState<{ title: string; author: string } | null>(null);
@@ -572,11 +573,64 @@ export default function Home() {
 
   function handleSaveContainer(updatedContainer: BookContainer) {
     if (!book || !storedRef.current) return;
-    const updated = { ...storedRef.current, container: updatedContainer };
+
+    const nonExcluded = updatedContainer.books.filter(b => !b.excluded);
+    const isMultiBook = nonExcluded.length > 1;
+
+    // Sync chapter bookIndex/bookTitle with the container so the rest of the UI
+    // (workshop chapter list, explore view) reflects the updated structure.
+    const updatedChapters = book.chapters.map(ch => {
+      if (!isMultiBook) return { ...ch, bookIndex: undefined, bookTitle: undefined };
+      const cBook = findBookForChapter(updatedContainer, ch.order);
+      return cBook ? { ...ch, bookIndex: cBook.index, bookTitle: cBook.title } : ch;
+    });
+    setBook({ ...book, chapters: updatedChapters, books: nonExcluded.map(b => b.title) });
+
+    // Also sync bookMeta so the persisted data matches
+    const bookMeta = storedRef.current.bookMeta;
+    const updatedBookMeta = bookMeta ? {
+      ...bookMeta,
+      chapters: bookMeta.chapters.map(ch => {
+        if (!isMultiBook) return { ...ch, bookIndex: undefined, bookTitle: undefined };
+        const cBook = findBookForChapter(updatedContainer, ch.order);
+        return cBook ? { ...ch, bookIndex: cBook.index, bookTitle: cBook.title } : ch;
+      }),
+      books: nonExcluded.map(b => b.title),
+    } : bookMeta;
+
+    // If the user is completing initial setup via the structure editor, derive
+    // the analysis range from the container's effective bounds. Without this,
+    // the workshop's "Set up your book" view keeps showing chapters the user
+    // just excluded, because chapterRange and needsSetup were initialized from
+    // detectChapterRange and never sync with the editor's edits.
+    let newRange: { start: number; end: number } | undefined;
+    if (needsSetup) {
+      const excludedSet = getExcludedOrders(updatedContainer);
+      const visibleOrders = book.chapters
+        .map(ch => ch.order)
+        .filter(o => !excludedSet.has(o));
+      if (visibleOrders.length > 0) {
+        newRange = { start: Math.min(...visibleOrders), end: Math.max(...visibleOrders) };
+      }
+    }
+
+    const updated: StoredBookState = {
+      ...storedRef.current,
+      container: updatedContainer,
+      bookMeta: updatedBookMeta,
+      ...(newRange ? { chapterRange: newRange } : {}),
+    };
     storedRef.current = updated;
     persistState(book.title, book.author, updated);
+    setContainerRev(r => r + 1);
     setShowBookStructureEditor(false);
     setLockedBookIndices(undefined);
+
+    if (newRange) {
+      setChapterRangeState(newRange);
+      setNeedsSetup(false);
+      setCurrentIndex(newRange.start);
+    }
   }
 
   async function handleAppendToSeries(existingTitle: string, existingAuthor: string) {
@@ -586,10 +640,14 @@ export default function Home() {
 
     const maxOrder = Math.max(...existing.bookMeta.chapters.map((ch) => ch.order));
     const offset = maxOrder + 1;
+    // Namespace incoming chapter ids so they don't collide with existing chapters
+    // (EPUBs commonly reuse short itemIds like "ch1"; without prefixing, textMap
+    // lookups in loadBookFromMeta would return the wrong chapter's text).
+    const idPrefix = `b${existing.container.books.length}-`;
 
     // Rebase new EPUB's chapters
     const rebasedMeta = pendingBook.chapters.map((ch) => ({
-      id: ch.id,
+      id: idPrefix + ch.id,
       title: ch.title,
       order: ch.order + offset,
       bookIndex: (ch.bookIndex ?? 0) + existing.container.books.length,
@@ -630,15 +688,17 @@ export default function Home() {
       ],
     };
 
-    // Save chapter texts for new book
-    const chaptersWithText = pendingBook.chapters.filter((ch) => ch.text).map((ch) => ({
-      id: ch.id,
+    // Load existing chapter texts BEFORE any save/delete so we can preserve them.
+    // saveChapters replaces the entire IndexedDB entry, and deleteBookState (called
+    // on rename) cascades to deleteChapters — so without preloading + remerging here,
+    // book 1's texts (and book 2's, in the rename case) get wiped.
+    const existingChapterEntries = (await loadChapters(existingTitle, existingAuthor).catch(() => null)) ?? [];
+    const newChapterEntries = pendingBook.chapters.filter((ch) => ch.text).map((ch) => ({
+      id: idPrefix + ch.id,
       text: ch.text,
       htmlHead: (ch as unknown as Record<string, string>)._htmlHead,
     }));
-    if (chaptersWithText.length > 0) {
-      await saveChapters(existingTitle, existingAuthor, chaptersWithText).catch(() => {});
-    }
+    const mergedChapterEntries = [...existingChapterEntries, ...newChapterEntries];
 
     // Prompt for series title if going from 1 to 2+ books
     let seriesTitle = existingTitle;
@@ -655,12 +715,18 @@ export default function Home() {
       container: mergedContainer,
     };
 
-    // If title changed (series rename), save under new key and delete old
+    // If title changed (series rename), save under new key and delete old.
+    // deleteBookState also deletes chapter texts at the old key, so persist the
+    // merged texts AFTER deletion to avoid losing them.
     if (seriesTitle !== existingTitle) {
       await saveBookState(seriesTitle, seriesAuthor, updatedState);
       await deleteBookState(existingTitle, existingAuthor).catch(() => {});
     } else {
       await saveBookState(existingTitle, existingAuthor, updatedState);
+    }
+
+    if (mergedChapterEntries.length > 0) {
+      await saveChapters(seriesTitle, seriesAuthor, mergedChapterEntries).catch(() => {});
     }
 
     // Clear pending state
@@ -817,6 +883,7 @@ export default function Home() {
   useEffect(() => { mapStateRef.current = mapState; }, [mapState]);
 
   const visibleChapterOrders = useMemo(() => {
+    void containerRev; // reactive trigger — containerRev increments on every container save
     const container = storedRef.current?.container;
     if (!container) return null;
     const targetBooks = bookFilter.mode === 'all'
@@ -830,8 +897,7 @@ export default function Home() {
       }
     }
     return visible;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storedRef.current?.container, bookFilter]);
+  }, [containerRev, bookFilter]);
 
   const visibleSnapshots = useMemo(() => {
     const snaps = storedRef.current?.snapshots ?? [];
@@ -1114,6 +1180,7 @@ export default function Home() {
     }
 
     storedRef.current = stateToSave;
+    setContainerRev(r => r + 1);
     persistState(parsed.title, parsed.author, stateToSave);
     // Persist chapter texts in IndexedDB so re-upload is not required next session
     const chaptersWithText = parsed.chapters.filter((ch) => ch.text).map((ch) => ({
@@ -1272,8 +1339,12 @@ export default function Home() {
       }
       const others = listSavedBooks(parsed.title, parsed.author).filter((b) => b.lastAnalyzedIndex >= 0);
       if (others.length > 0) {
+        const withFlags = await Promise.all(others.map(async (b) => {
+          const state = await loadBookState(b.title, b.author);
+          return { ...b, hasContainer: !!(state?.container?.books?.length && state?.bookMeta) };
+        }));
         setPendingBook(parsed);
-        setSeriesOptions(others);
+        setSeriesOptions(withFlags);
       } else {
         activateBook(parsed, null);
       }
@@ -1504,13 +1575,85 @@ export default function Home() {
     result ?? null,
     visibleSnapshots.length !== (storedRef.current?.snapshots ?? []).length ? visibleSnapshots : undefined,
   );
-  const displayed = characters
-    .sort((a, b) => {
-      if (sortKey === 'importance') return IMPORTANCE_ORDER[a.importance] - IMPORTANCE_ORDER[b.importance];
-      if (sortKey === 'name') return a.name.localeCompare(b.name);
-      if (sortKey === 'status') return a.status.localeCompare(b.status);
-      return 0;
-    });
+
+  // Build last-mentioned-chapter maps from snapshot events (names actually mentioned per chapter),
+  // bounded to snapshots at or before the selected chapter.
+  const { charLastMentioned, locLastMentioned } = useMemo(() => {
+    const charMap = new Map<string, number>();
+    const locMap = new Map<string, number>();
+    if (!result) return { charLastMentioned: charMap, locLastMentioned: locMap };
+
+    const charAlias = new Map<string, string>();
+    for (const c of result.characters) {
+      const canonical = c.name.toLowerCase();
+      charAlias.set(canonical, canonical);
+      for (const a of c.aliases ?? []) charAlias.set(a.toLowerCase(), canonical);
+    }
+    const locAlias = new Map<string, string>();
+    for (const l of result.locations ?? []) {
+      const canonical = l.name.toLowerCase();
+      locAlias.set(canonical, canonical);
+      for (const a of l.aliases ?? []) locAlias.set(a.toLowerCase(), canonical);
+    }
+
+    const stored = storedRef.current;
+    const bookmarkCeiling = Math.max(0, Math.min(
+      stored?.readingBookmark ?? stored?.lastAnalyzedIndex ?? 0,
+      stored?.lastAnalyzedIndex ?? 0,
+    ));
+    const ceiling = spoilerDismissedIndex ?? bookmarkCeiling;
+    const relevant = visibleSnapshots.filter((s) => s.index <= ceiling);
+    for (const snap of relevant) {
+      if (!snap.events?.length) continue;
+      for (const ev of snap.events) {
+        for (const n of ev.characters ?? []) {
+          const k = charAlias.get(n.toLowerCase());
+          if (!k) continue;
+          const prev = charMap.get(k) ?? -1;
+          if (snap.index > prev) charMap.set(k, snap.index);
+        }
+        for (const n of ev.locations ?? []) {
+          const k = locAlias.get(n.toLowerCase());
+          if (!k) continue;
+          const prev = locMap.get(k) ?? -1;
+          if (snap.index > prev) locMap.set(k, snap.index);
+        }
+      }
+    }
+    return { charLastMentioned: charMap, locLastMentioned: locMap };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, visibleSnapshots, spoilerDismissedIndex, storedRef.current?.readingBookmark, storedRef.current?.lastAnalyzedIndex]);
+
+  // Fallback for characters when no events recorded that name: parse Character.lastSeen (chapter title).
+  const chapterTitleToIndex = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!book) return map;
+    for (let i = 0; i < book.chapters.length; i++) {
+      const t = book.chapters[i].title;
+      if (!map.has(t)) map.set(t, i);
+    }
+    return map;
+  }, [book]);
+  const charRecency = (c: Character): number => {
+    const fromEvents = charLastMentioned.get(c.name.toLowerCase());
+    if (fromEvents !== undefined) return fromEvents;
+    return chapterTitleToIndex.get(c.lastSeen) ?? -1;
+  };
+
+  const displayed = [...characters].sort((a, b) => {
+    const la = charRecency(a);
+    const lb = charRecency(b);
+    if (la !== lb) return lb - la;
+    if (sortKey === 'name') return a.name.localeCompare(b.name);
+    if (sortKey === 'status') return a.status.localeCompare(b.status);
+    return IMPORTANCE_ORDER[a.importance] - IMPORTANCE_ORDER[b.importance];
+  });
+  const displayedLocations = [...(result?.locations ?? [])].sort((a, b) => {
+    const la = locLastMentioned.get(a.name.toLowerCase()) ?? -1;
+    const lb = locLastMentioned.get(b.name.toLowerCase()) ?? -1;
+    if (la !== lb) return lb - la;
+    return a.name.localeCompare(b.name);
+  });
 
   if (pendingBook) {
     return (
@@ -1518,7 +1661,7 @@ export default function Home() {
         <SeriesPicker
           newBookTitle={pendingBook.title}
           newBookAuthor={pendingBook.author}
-          savedBooks={seriesOptions.map((b) => ({ ...b, hasContainer: true }))}
+          savedBooks={seriesOptions}
           onAppendToSeries={handleAppendToSeries}
           onContinueFrom={handleContinueFrom}
           onStartFresh={handleStartFresh}
@@ -1778,6 +1921,7 @@ export default function Home() {
             setShowBookmarkModal(false);
           }}
           onClose={() => setShowBookmarkModal(false)}
+          visibleChapterOrders={visibleChapterOrders}
         />
       )}
       {showTimeline && book && (
@@ -1855,8 +1999,11 @@ export default function Home() {
       <ExploreHeader
         bookTitle={book.title}
         currentChapterIndex={currentIndex}
-        totalChapters={book.chapters.length}
-        onChapterPillTap={() => {}}
+        totalChapters={visibleChapterOrders?.size ?? book.chapters.length}
+        onChapterPillTap={() => {
+          setBookmarkModalMode('update');
+          setShowBookmarkModal(true);
+        }}
         onOpenWorkshop={() => setShowWorkshop(true)}
         onOpenChat={() => setShowChat(true)}
         onOpenSettings={() => setShowSettings(true)}
@@ -1971,7 +2118,7 @@ export default function Home() {
 
             {tab === 'locations' && result?.locations && (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                {result.locations.map((location) => (
+                {displayedLocations.map((location) => (
                   <NewLocationCard
                     key={location.name}
                     location={location}
@@ -2011,7 +2158,7 @@ export default function Home() {
                   locationInfos={result?.locations}
                   bookTitle={book.title}
                   mapState={mapState}
-                  snapshots={stored?.snapshots ?? []}
+                  snapshots={visibleSnapshots}
                   currentResult={result ?? undefined}
                   onResultEdit={applyResultEdit}
                   resolvedCharacters={derived.resolvedCharacters}
@@ -2049,7 +2196,7 @@ export default function Home() {
           bookAuthor={book.author}
           lastAnalyzedIndex={stored.lastAnalyzedIndex}
           currentChapterTitle={book.chapters[stored.lastAnalyzedIndex]?.title ?? `Chapter ${stored.lastAnalyzedIndex + 1}`}
-          totalChapters={book.chapters.length}
+          totalChapters={visibleChapterOrders?.size ?? book.chapters.length}
           result={result}
           snapshots={stored.snapshots ?? []}
           chapterTitles={book.chapters.map((ch) => ch.title)}

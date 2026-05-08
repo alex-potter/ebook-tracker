@@ -9,13 +9,13 @@ import EntityPicker from './EntityPicker';
 const STATUS_BADGE: Record<string, string> = {
   active:   'bg-amber-500/15 text-amber-400 border-amber-500/25',
   resolved: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25',
-  dormant:  'bg-stone-400/15 text-stone-400 border-stone-400/25 dark:bg-zinc-600/15 dark:text-zinc-400',
+  dormant:  'bg-ink-dim/15 text-ink-soft border-ink-dim/25',
 };
 
 const CHAR_STATUS_DOT: Record<string, string> = {
   alive:     'bg-emerald-400',
   dead:      'bg-red-400',
-  unknown:   'bg-stone-400 dark:bg-zinc-500',
+  unknown:   'bg-ink-dim',
   uncertain: 'bg-amber-400',
 };
 
@@ -250,11 +250,11 @@ export default function NarrativeArcModal({ arcName, snapshots, chapterTitles, c
     return (
       <div className="space-y-4">
         <div>
-          <label className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider">Name</label>
-          <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200 focus:border-stone-400 dark:focus:border-zinc-500" />
+          <label className="text-xs font-semibold text-ink-dim uppercase tracking-wider">Name</label>
+          <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-transparent outline-none border-border text-ink focus:border-rust" />
         </div>
         <div>
-          <label className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider">Status</label>
+          <label className="text-xs font-semibold text-ink-dim uppercase tracking-wider">Status</label>
           <div className="flex gap-1 mt-1">
             {(['active', 'dormant', 'resolved'] as const).map((val) => (
               <button
@@ -263,7 +263,7 @@ export default function NarrativeArcModal({ arcName, snapshots, chapterTitles, c
                 className={`flex-1 text-xs py-1.5 rounded-lg border font-medium transition-colors ${
                   draft.status === val
                     ? 'bg-amber-500/20 text-amber-400 border-amber-500/40'
-                    : 'border-stone-300 dark:border-zinc-700 text-stone-400 dark:text-zinc-500 hover:text-stone-600 dark:hover:text-zinc-300'
+                    : 'border-border text-ink-dim hover:text-ink'
                 }`}
               >
                 {val.charAt(0).toUpperCase() + val.slice(1)}
@@ -272,20 +272,20 @@ export default function NarrativeArcModal({ arcName, snapshots, chapterTitles, c
           </div>
         </div>
         <div>
-          <label className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider">Characters (comma-separated)</label>
-          <input value={draft.characters} onChange={(e) => setDraft({ ...draft, characters: e.target.value })} className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200 focus:border-stone-400 dark:focus:border-zinc-500" />
+          <label className="text-xs font-semibold text-ink-dim uppercase tracking-wider">Characters (comma-separated)</label>
+          <input value={draft.characters} onChange={(e) => setDraft({ ...draft, characters: e.target.value })} className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-transparent outline-none border-border text-ink focus:border-rust" />
         </div>
         <div>
-          <label className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider">Summary</label>
-          <textarea value={draft.summary} onChange={(e) => setDraft({ ...draft, summary: e.target.value })} rows={3} className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200 focus:border-stone-400 dark:focus:border-zinc-500 resize-none" />
+          <label className="text-xs font-semibold text-ink-dim uppercase tracking-wider">Summary</label>
+          <textarea value={draft.summary} onChange={(e) => setDraft({ ...draft, summary: e.target.value })} rows={3} className="mt-1 w-full text-sm px-3 py-1.5 rounded-lg border bg-transparent outline-none border-border text-ink focus:border-rust resize-none" />
         </div>
         <div className="flex gap-2 pt-2">
-          <button onClick={handleSaveEdit} className="flex-1 text-xs py-2 rounded-lg bg-amber-500 text-zinc-900 font-semibold hover:bg-amber-400 transition-colors">Save</button>
-          <button onClick={() => { setDraft(arcToDraft({ name: arcName, status, characters, summary })); setMode('view'); }} className="flex-1 text-xs py-2 rounded-lg border border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors">Cancel</button>
+          <button onClick={handleSaveEdit} className="flex-1 text-xs py-2 rounded-lg bg-rust text-white font-semibold hover:bg-rust/90 transition-colors">Save</button>
+          <button onClick={() => { setDraft(arcToDraft({ name: arcName, status, characters, summary })); setMode('view'); }} className="flex-1 text-xs py-2 rounded-lg border border-border text-ink-soft hover:text-ink transition-colors">Cancel</button>
         </div>
-        <div className="flex gap-2 border-t border-stone-200 dark:border-zinc-800 pt-3">
-          <button onClick={() => setMode('merge')} className="text-[11px] px-2.5 py-1 rounded-lg border border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:text-amber-500 hover:border-amber-500/40 transition-colors">Merge with...</button>
-          <button onClick={() => { const d = arcToDraft({ name: arcName, status, characters, summary }); setSplitA(d); setSplitB(d); setMode('split'); }} className="text-[11px] px-2.5 py-1 rounded-lg border border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:text-violet-400 hover:border-violet-400/40 transition-colors">Split into two...</button>
+        <div className="flex gap-2 border-t border-border pt-3">
+          <button onClick={() => setMode('merge')} className="text-[11px] px-2.5 py-1 rounded-lg border border-border text-ink-soft hover:text-rust hover:border-amber-500/40 transition-colors">Merge with...</button>
+          <button onClick={() => { const d = arcToDraft({ name: arcName, status, characters, summary }); setSplitA(d); setSplitB(d); setMode('split'); }} className="text-[11px] px-2.5 py-1 rounded-lg border border-border text-ink-soft hover:text-violet-400 hover:border-violet-400/40 transition-colors">Split into two...</button>
           <button onClick={() => setMode('delete')} className="ml-auto text-[11px] px-2.5 py-1 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors">Delete</button>
         </div>
       </div>
@@ -295,29 +295,29 @@ export default function NarrativeArcModal({ arcName, snapshots, chapterTitles, c
   function renderSplitForm() {
     const renderHalf = (label: string, d: DraftArc, setD: (d: DraftArc) => void) => (
       <div className="flex-1 space-y-2">
-        <p className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider">{label}</p>
-        <input value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} placeholder="Name" className="w-full text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200" />
+        <p className="text-xs font-semibold text-ink-dim uppercase tracking-wider">{label}</p>
+        <input value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} placeholder="Name" className="w-full text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-border text-ink" />
         <div className="flex gap-1">
           {(['active', 'dormant', 'resolved'] as const).map((val) => (
-            <button key={val} onClick={() => setD({ ...d, status: val })} className={`flex-1 text-[10px] py-1 rounded border font-medium ${d.status === val ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : 'border-stone-300 dark:border-zinc-700 text-stone-400 dark:text-zinc-500'}`}>{val}</button>
+            <button key={val} onClick={() => setD({ ...d, status: val })} className={`flex-1 text-[10px] py-1 rounded border font-medium ${d.status === val ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : 'border-border text-ink-dim'}`}>{val}</button>
           ))}
         </div>
-        <input value={d.characters} onChange={(e) => setD({ ...d, characters: e.target.value })} placeholder="Characters" className="w-full text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200" />
-        <textarea value={d.summary} onChange={(e) => setD({ ...d, summary: e.target.value })} placeholder="Summary" rows={3} className="w-full text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-stone-300 dark:border-zinc-700 text-stone-800 dark:text-zinc-200 resize-none" />
+        <input value={d.characters} onChange={(e) => setD({ ...d, characters: e.target.value })} placeholder="Characters" className="w-full text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-border text-ink" />
+        <textarea value={d.summary} onChange={(e) => setD({ ...d, summary: e.target.value })} placeholder="Summary" rows={3} className="w-full text-xs px-2 py-1 rounded-md border bg-transparent outline-none border-border text-ink resize-none" />
       </div>
     );
     const canConfirm = splitA.name.trim() && splitB.name.trim() && splitA.name.trim() !== splitB.name.trim();
     return (
       <div className="space-y-4">
-        <p className="text-xs text-stone-400 dark:text-zinc-500">Split <strong className="text-stone-700 dark:text-zinc-300">{arcName}</strong> into two arcs.</p>
+        <p className="text-xs text-ink-dim">Split <strong className="text-ink">{arcName}</strong> into two arcs.</p>
         <div className="flex gap-3">
           {renderHalf('Arc A', splitA, setSplitA)}
-          <div className="w-px bg-stone-200 dark:bg-zinc-800 flex-shrink-0" />
+          <div className="w-px bg-paper flex-shrink-0" />
           {renderHalf('Arc B', splitB, setSplitB)}
         </div>
         <div className="flex gap-2">
           <button onClick={handleSplit} disabled={!canConfirm} className="flex-1 text-xs py-2 rounded-lg bg-violet-500 text-white font-semibold hover:bg-violet-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Split</button>
-          <button onClick={() => setMode('edit')} className="flex-1 text-xs py-2 rounded-lg border border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors">Cancel</button>
+          <button onClick={() => setMode('edit')} className="flex-1 text-xs py-2 rounded-lg border border-border text-ink-soft hover:text-ink transition-colors">Cancel</button>
         </div>
       </div>
     );
@@ -326,11 +326,11 @@ export default function NarrativeArcModal({ arcName, snapshots, chapterTitles, c
   function renderDeleteConfirm() {
     return (
       <div className="space-y-4 text-center py-4">
-        <p className="text-sm text-stone-700 dark:text-zinc-300">Delete <strong>{arcName}</strong>? This cannot be undone.</p>
-        <p className="text-xs text-stone-400 dark:text-zinc-500">The arc field will be cleared on locations referencing this arc.</p>
+        <p className="text-sm text-ink">Delete <strong>{arcName}</strong>? This cannot be undone.</p>
+        <p className="text-xs text-ink-dim">The arc field will be cleared on locations referencing this arc.</p>
         <div className="flex gap-2 justify-center">
           <button onClick={handleDelete} className="text-xs px-4 py-2 rounded-lg bg-red-500 text-white font-semibold hover:bg-red-400 transition-colors">Confirm Delete</button>
-          <button onClick={() => setMode('edit')} className="text-xs px-4 py-2 rounded-lg border border-stone-300 dark:border-zinc-700 text-stone-500 dark:text-zinc-400 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors">Cancel</button>
+          <button onClick={() => setMode('edit')} className="text-xs px-4 py-2 rounded-lg border border-border text-ink-soft hover:text-ink transition-colors">Cancel</button>
         </div>
       </div>
     );
@@ -352,32 +352,32 @@ export default function NarrativeArcModal({ arcName, snapshots, chapterTitles, c
         <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={mode !== 'view' ? () => setMode('view') : undefined} />
 
         <div
-          className="relative z-10 w-full max-w-lg max-h-[85vh] max-h-[85dvh] flex flex-col bg-white dark:bg-zinc-900 rounded-2xl border border-stone-200 dark:border-zinc-800 shadow-2xl"
+          className="relative z-10 w-full max-w-lg max-h-[85vh] max-h-[85dvh] flex flex-col bg-paper-raised rounded-2xl border border-border shadow-2xl font-serif"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex-shrink-0 p-6 border-b border-stone-200 dark:border-zinc-800 pb-0">
+          <div className="flex-shrink-0 p-6 border-b border-border pb-0">
             <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-stone-100 dark:bg-zinc-800 flex items-center justify-center text-2xl">
+              <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-paper flex items-center justify-center text-2xl">
                 🎭
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
-                    <h2 className="text-lg font-bold text-stone-900 dark:text-zinc-100 leading-tight">{arcName}</h2>
+                    <h2 className="text-lg font-bold text-ink leading-tight">{arcName}</h2>
                     {mode === 'view' && (
                       <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                         <span className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-md border font-medium ${STATUS_BADGE[status] ?? STATUS_BADGE.active}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${status === 'active' ? 'bg-amber-400' : status === 'resolved' ? 'bg-emerald-400' : 'bg-stone-400'}`} />
+                          <span className={`w-1.5 h-1.5 rounded-full ${status === 'active' ? 'bg-amber-400' : status === 'resolved' ? 'bg-emerald-400' : 'bg-ink-dim'}`} />
                           {status.charAt(0).toUpperCase() + status.slice(1)}
                         </span>
                         {characters.length > 0 && (
-                          <span className="text-xs text-stone-400 dark:text-zinc-500">
+                          <span className="text-xs text-ink-dim">
                             {characters.length} character{characters.length !== 1 ? 's' : ''}
                           </span>
                         )}
                         {arcLocations.length > 0 && (
-                          <span className="text-xs text-stone-400 dark:text-zinc-500">
+                          <span className="text-xs text-ink-dim">
                             {arcLocations.length} location{arcLocations.length !== 1 ? 's' : ''}
                           </span>
                         )}
@@ -388,7 +388,7 @@ export default function NarrativeArcModal({ arcName, snapshots, chapterTitles, c
                     {canEdit && mode === 'view' && (
                       <button
                         onClick={() => { setDraft(arcToDraft({ name: arcName, status, characters, summary })); setMode('edit'); setTab('overview'); }}
-                        className="flex-shrink-0 text-stone-400 dark:text-zinc-600 hover:text-amber-500 transition-colors text-sm leading-none p-1"
+                        className="flex-shrink-0 text-ink-dim hover:text-rust transition-colors text-sm leading-none p-1"
                         title="Edit arc"
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
@@ -396,7 +396,7 @@ export default function NarrativeArcModal({ arcName, snapshots, chapterTitles, c
                     )}
                     <button
                       onClick={mode !== 'view' ? () => setMode('view') : onClose}
-                      className="flex-shrink-0 text-stone-400 dark:text-zinc-600 hover:text-stone-700 dark:hover:text-zinc-300 transition-colors text-lg leading-none"
+                      className="flex-shrink-0 text-ink-dim hover:text-ink transition-colors text-lg leading-none"
                     >
                       ✕
                     </button>
@@ -416,8 +416,8 @@ export default function NarrativeArcModal({ arcName, snapshots, chapterTitles, c
                     onClick={() => setTab(key as 'overview' | 'timeline')}
                     className={`px-4 py-2 text-xs font-medium border-b-2 transition-colors -mb-px ${
                       tab === key
-                        ? 'border-amber-500 text-amber-400'
-                        : 'border-transparent text-stone-400 dark:text-zinc-500 hover:text-stone-700 dark:hover:text-zinc-300'
+                        ? 'border-rust text-rust'
+                        : 'border-transparent text-ink-dim hover:text-ink'
                     }`}
                   >
                     {label}
@@ -443,16 +443,16 @@ export default function NarrativeArcModal({ arcName, snapshots, chapterTitles, c
               <>
                 {summary ? (
                   <section>
-                    <p className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider mb-1.5">Current State</p>
-                    <p className="text-sm text-stone-700 dark:text-zinc-300 leading-relaxed">{summary}</p>
+                    <p className="text-xs font-semibold text-ink-dim uppercase tracking-wider mb-1.5">Current State</p>
+                    <p className="text-sm text-ink leading-relaxed">{summary}</p>
                   </section>
                 ) : (
-                  <p className="text-sm text-stone-400 dark:text-zinc-600 italic">No summary yet — analyze more chapters to populate.</p>
+                  <p className="text-sm text-ink-dim italic">No summary yet — analyze more chapters to populate.</p>
                 )}
 
                 {characters.length > 0 && (
                   <section>
-                    <p className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider mb-2">Characters</p>
+                    <p className="text-xs font-semibold text-ink-dim uppercase tracking-wider mb-2">Characters</p>
                     <ul className="space-y-1.5">
                       {characters.map((name) => {
                         const charStatus = charStatusMap.get(name) ?? 'unknown';
@@ -463,7 +463,7 @@ export default function NarrativeArcModal({ arcName, snapshots, chapterTitles, c
                             </div>
                             <button
                               onClick={(e) => { e.stopPropagation(); onEntityClick?.('character', name); }}
-                              className={`text-sm text-stone-800 dark:text-zinc-200 ${onEntityClick ? 'hover:underline cursor-pointer' : ''}`}
+                              className={`text-sm text-ink ${onEntityClick ? 'hover:underline cursor-pointer' : ''}`}
                               disabled={!onEntityClick}
                             >{name}</button>
                             <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ml-auto ${CHAR_STATUS_DOT[charStatus] ?? CHAR_STATUS_DOT.unknown}`} title={charStatus} />
@@ -476,18 +476,18 @@ export default function NarrativeArcModal({ arcName, snapshots, chapterTitles, c
 
                 {arcLocations.length > 0 && (
                   <section>
-                    <p className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider mb-2">Locations</p>
+                    <p className="text-xs font-semibold text-ink-dim uppercase tracking-wider mb-2">Locations</p>
                     <ul className="space-y-2">
                       {arcLocations.map(([name, desc]) => (
                         <li key={name} className="flex items-start gap-2">
-                          <span className="text-stone-400 dark:text-zinc-600 mt-0.5 flex-shrink-0">📍</span>
+                          <span className="text-ink-dim mt-0.5 flex-shrink-0">📍</span>
                           <div>
                             <button
                               onClick={(e) => { e.stopPropagation(); onEntityClick?.('location', name); }}
-                              className={`text-sm font-medium text-stone-800 dark:text-zinc-200 text-left ${onEntityClick ? 'hover:underline cursor-pointer' : ''}`}
+                              className={`text-sm font-medium text-ink text-left ${onEntityClick ? 'hover:underline cursor-pointer' : ''}`}
                               disabled={!onEntityClick}
                             >{name}</button>
-                            {desc && <p className="text-xs text-stone-400 dark:text-zinc-500 mt-0.5 leading-relaxed">{desc}</p>}
+                            {desc && <p className="text-xs text-ink-dim mt-0.5 leading-relaxed">{desc}</p>}
                           </div>
                         </li>
                       ))}
@@ -499,22 +499,22 @@ export default function NarrativeArcModal({ arcName, snapshots, chapterTitles, c
 
             {mode === 'view' && tab === 'timeline' && (
               <section>
-                <p className="text-xs font-semibold text-stone-400 dark:text-zinc-500 uppercase tracking-wider mb-4">
+                <p className="text-xs font-semibold text-ink-dim uppercase tracking-wider mb-4">
                   Arc progression · newest first
                 </p>
-                <ol className="relative border-l border-stone-200 dark:border-zinc-800 space-y-0">
+                <ol className="relative border-l border-border space-y-0">
                   {timelineReversed.map((entry, i) => (
                     <li key={i} className="pl-5 pb-6 last:pb-0 relative">
-                      <span className="absolute -left-[4.5px] top-1.5 w-2 h-2 rounded-full bg-stone-200 dark:bg-zinc-700 border border-stone-300 dark:border-zinc-600" />
+                      <span className="absolute -left-[4.5px] top-1.5 w-2 h-2 rounded-full bg-border border border-border" />
                       <div className="flex items-center gap-2 mb-1.5">
-                        <p className="text-[11px] font-semibold text-stone-400 dark:text-zinc-500">
+                        <p className="text-[11px] font-semibold text-ink-dim">
                           Ch. {entry.chapterIndex + 1}{chapterTitles?.[entry.chapterIndex] ? ` — ${chapterTitles[entry.chapterIndex]}` : ''}
                         </p>
                         <span className={`text-[10px] px-1.5 py-px rounded border font-medium ${STATUS_BADGE[entry.status] ?? STATUS_BADGE.active}`}>
                           {entry.status}
                         </span>
                       </div>
-                      <p className="text-sm text-stone-700 dark:text-zinc-300 leading-relaxed">{entry.summary}</p>
+                      <p className="text-sm text-ink leading-relaxed">{entry.summary}</p>
                     </li>
                   ))}
                 </ol>
