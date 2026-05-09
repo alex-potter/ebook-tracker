@@ -29,6 +29,11 @@ ANTI-HALLUCINATION RULES (critical):
 - Do NOT invent or infer characters from context clues, summaries, or your knowledge of the book/series.
 - Titles and epithets for the same person must be listed as aliases, not separate entries.
 
+NAME FIELD RULES (critical):
+- The "name" field must contain ONLY the canonical character name — nothing else.
+- NEVER embed alias lists, annotations, or bracketed text in "name" (e.g. do NOT write "Gandalf [aliases: Greyhaim, Stormcloak]" or "Gandalf Aliases[Greyhaim, Stormcloak]").
+- Aliases ALWAYS go in the separate "aliases" array, never inside the name string.
+
 Your output must be valid JSON and nothing else.`;
 
 export const SCHEMA = `{
@@ -189,6 +194,48 @@ export function truncateForDelta(newText: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Name sanitization
+// ---------------------------------------------------------------------------
+
+// Strips trailing alias-list annotations the LLM occasionally regurgitates into
+// the `name` field — patterns like ` [aliases: a, b]`, ` Aliases[a, b]`, or
+// ` (aliases a, b)`. Returns the cleaned name plus any extracted alias values
+// so callers can fold them back into the entity's aliases array.
+const ALIAS_SUFFIX_RE = /\s*[[(]?\s*aliases?\b[\s:]*[[(]?\s*([^\])]*?)\s*[\])]+\s*$/i;
+const NOISE_ALIAS_RE = /^(none|n\/a|null|empty|no aliases?|unknown)$/i;
+
+export function cleanEntityName(name: string): { name: string; extractedAliases: string[] } {
+  if (!name) return { name: '', extractedAliases: [] };
+  const match = name.match(ALIAS_SUFFIX_RE);
+  if (!match) return { name: name.trim(), extractedAliases: [] };
+  const cleaned = name.slice(0, match.index).trim();
+  const extracted = match[1]
+    .split(/[,;]/)
+    .map((s) => s.trim())
+    .filter((s) => s && !NOISE_ALIAS_RE.test(s));
+  return { name: cleaned || name.trim(), extractedAliases: extracted };
+}
+
+export function sanitizeEntityNames<T extends { name: string; aliases?: string[] }>(entities: T[] | undefined): T[] {
+  if (!entities) return [];
+  return entities.map((e) => {
+    if (!e.name) return e;
+    const { name, extractedAliases } = cleanEntityName(e.name);
+    if (name === e.name && extractedAliases.length === 0) return e;
+    const merged = [...(e.aliases ?? []), ...extractedAliases];
+    const seen = new Set<string>();
+    const dedup: string[] = [];
+    for (const a of merged) {
+      const key = a.toLowerCase().trim();
+      if (!key || key === name.toLowerCase().trim() || seen.has(key)) continue;
+      seen.add(key);
+      dedup.push(a);
+    }
+    return { ...e, name, aliases: dedup };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Fuzzy name matching (mirrored from analyze/route.ts)
 // ---------------------------------------------------------------------------
 
@@ -250,8 +297,10 @@ export function mergeDelta(
   previous: AnalysisResult,
   delta: { updatedCharacters?: AnalysisResult['characters']; updatedLocations?: AnalysisResult['locations']; updatedArcs?: AnalysisResult['arcs']; summary?: string },
 ): AnalysisResult {
+  const cleanedDeltaChars = sanitizeEntityNames(delta.updatedCharacters);
+  const cleanedDeltaLocs = sanitizeEntityNames(delta.updatedLocations);
   const merged = previous.characters.map((c) => ({ ...c }));
-  for (const updated of delta.updatedCharacters ?? []) {
+  for (const updated of cleanedDeltaChars) {
     if (!updated.name) continue;
     const updatedNames = [updated.name, ...(updated.aliases ?? [])];
     // Primary name match first (strongest signal)
@@ -302,7 +351,7 @@ export function mergeDelta(
   }
   const prevLocations = previous.locations ?? [];
   const mergedLocations = [...prevLocations];
-  for (const updated of delta.updatedLocations ?? []) {
+  for (const updated of cleanedDeltaLocs) {
     if (!updated.name) continue;
     const updatedLocNames = [updated.name, ...(updated.aliases ?? [])];
     const idx = mergedLocations.findIndex((l) =>
@@ -391,8 +440,8 @@ export function extractObjectsFromArray(raw: string, fieldName: string): Analysi
 
 export function recoverPartialJson(raw: string, previousResult?: AnalysisResult): AnalysisResult | null {
   try {
-    const characters = extractObjectsFromArray(raw, 'characters');
-    const updatedCharacters = extractObjectsFromArray(raw, 'updatedCharacters');
+    const characters = sanitizeEntityNames(extractObjectsFromArray(raw, 'characters'));
+    const updatedCharacters = sanitizeEntityNames(extractObjectsFromArray(raw, 'updatedCharacters'));
     const summaryMatch = raw.match(/"summary"\s*:\s*"((?:[^"\\]|\\.)*)"/);
     const summary = summaryMatch
       ? summaryMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"')

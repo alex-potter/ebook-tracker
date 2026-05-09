@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { AnalysisResult, Character, LocationInfo, NarrativeArc, ChapterEvent } from '@/types';
 import { reconcileResult, computeNameOverlaps, updateArcReferences, buildCharReconcilePrompt, type CallAndParseFn } from '@/lib/reconcile';
-import { levenshtein } from '@/lib/ai-shared';
+import { levenshtein, sanitizeEntityNames } from '@/lib/ai-shared';
 import { escapeRegex, validateCharactersAgainstText, validateLocationsAgainstText } from '@/lib/validate-entities';
 import { callLLM, resolveConfig, type LLMResult } from '@/lib/llm';
 import { getContextWindow, splitChapterText, computeTextBudget } from '@/lib/context-window';
@@ -41,7 +41,12 @@ DEDUPLICATION RULES (critical):
 - A character must appear EXACTLY ONCE regardless of how many names or nicknames they are called by.
 - If the same person is referred to by multiple names (e.g. "Matrim Cauthon" and "Mat"), create ONE entry using their fullest known name and list all shorter forms in "aliases".
 - Never create separate entries for a full name and its nickname or shortened form.
-- Titles and epithets for the same person (e.g. "the Dragon Reborn" for "Rand al'Thor") must be listed as aliases, not separate entries.`;
+- Titles and epithets for the same person (e.g. "the Dragon Reborn" for "Rand al'Thor") must be listed as aliases, not separate entries.
+
+NAME FIELD RULES (critical):
+- The "name" field must contain ONLY the canonical character name — nothing else.
+- NEVER embed alias lists, annotations, or bracketed text in "name" (e.g. do NOT write "Gandalf [aliases: Greyhaim, Stormcloak]" or "Gandalf Aliases[Greyhaim, Stormcloak]").
+- Aliases ALWAYS go in the separate "aliases" array, never inside the name string.`;
 
 const LOCATIONS_SYSTEM = `You are a location and world-building tracker for a literary reading companion. ${ANTI_SPOILER}`;
 
@@ -151,7 +156,8 @@ RULES:
 5. ONLY include characters whose name literally appears in the provided text. Do NOT invent characters.
 6. A character must appear EXACTLY ONCE. If the same person is called multiple names (e.g. "Matrim Cauthon" and "Mat"), create ONE entry using the fullest name and list shorter forms in "aliases".
 7. Never create separate entries for a full name and its nickname. Titles/epithets go in aliases.
-8. NEVER group characters together (e.g. "The Hobbits", "The Fellowship"). Every individual gets their own entry.`;
+8. NEVER group characters together (e.g. "The Hobbits", "The Fellowship"). Every individual gets their own entry.
+9. The "name" field must contain ONLY the canonical character name. NEVER embed alias lists or bracketed text in "name" (e.g. do NOT write "Gandalf [aliases: Greyhaim]" or "Gandalf Aliases[Greyhaim]"). Aliases ALWAYS go in the separate "aliases" array.`;
 
 const LOCATIONS_SYSTEM_LOCAL = `You are a location tracker for a literary reading companion. Your output must be valid JSON and nothing else.
 
@@ -728,7 +734,7 @@ function inferParentLocations(locs: NonNullable<AnalysisResult['locations']>): N
  * This prevents downstream crashes from smaller models returning incomplete JSON.
  */
 function sanitizeLLMCharacters(chars: AnalysisResult['characters']): AnalysisResult['characters'] {
-  return chars
+  return sanitizeEntityNames(chars)
     .filter((c) => c.name)
     .map((c) => ({
       ...c,
@@ -738,7 +744,7 @@ function sanitizeLLMCharacters(chars: AnalysisResult['characters']): AnalysisRes
 }
 
 function sanitizeLLMLocations(locs: NonNullable<AnalysisResult['locations']>): NonNullable<AnalysisResult['locations']> {
-  return locs
+  return sanitizeEntityNames(locs)
     .filter((l) => l.name)
     .map((l) => ({
       ...l,

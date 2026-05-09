@@ -13,6 +13,7 @@ import {
   truncateForDelta,
   mergeDelta,
   recoverPartialJson,
+  sanitizeEntityNames,
 } from './ai-shared';
 import { validateCharactersAgainstText, validateLocationsAgainstText } from './validate-entities';
 import { waitIfNeeded, recordSuccess, recordRateLimit } from './rate-limiter';
@@ -472,10 +473,12 @@ export async function analyzeChapterClient(
   // Full analysis: validate entities against source text
   const result = parsed as unknown as AnalysisResult;
   if (result.characters?.length) {
+    result.characters = sanitizeEntityNames(result.characters);
     const { validated } = validateCharactersAgainstText(result.characters, chapter.text);
     result.characters = validated;
   }
   if (result.locations?.length) {
+    result.locations = sanitizeEntityNames(result.locations);
     const { validated } = validateLocationsAgainstText(result.locations, chapter.text);
     result.locations = validated.length > 0 ? validated : undefined;
   }
