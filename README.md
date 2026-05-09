@@ -123,7 +123,21 @@ The Android build ships a native llama.cpp module. Pick a model in Settings, it 
 
 ## Install it
 
-It's a PWA — on the [live site](https://alex-potter.github.io/bookbuddy/), browsers offer to install it directly. For the Android APK, see the developer setup below.
+### Web / PWA
+
+The [live site](https://alex-potter.github.io/bookbuddy/) is a full Progressive Web App. Most browsers will offer to install it directly to your home screen / app launcher — works on desktop, Android, and iOS.
+
+### Android APK (sideload)
+
+Prebuilt APKs are published on the [**Releases page**](https://github.com/alex-potter/bookbuddy/releases). Each release attaches `app-release.apk` — grab the one from the [latest release](https://github.com/alex-potter/bookbuddy/releases/latest) and install it manually:
+
+1. On your phone, open the release page and download `app-release.apk`
+2. When Android warns about installing from an unknown source, allow it for your browser (**Settings → Apps → *your browser* → Install unknown apps**)
+3. Open the downloaded APK and tap **Install**
+
+Updates are not automatic — check the Releases page periodically, or **Watch → Custom → Releases** on the GitHub repo to get notified.
+
+The APK ships with the on-device llama.cpp engine bundled, so it can run analysis fully offline once you download a model in **Settings**.
 
 ---
 
