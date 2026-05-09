@@ -1,16 +1,14 @@
 <p align="center">
-  <img src="logo.svg" alt="BookBuddy logo" width="180" />
+  <a href="https://alex-potter.github.io/bookbuddy/">
+    <img src="docs/brand/banner-light.svg" alt="BookBuddy — a spoiler-safe reader's companion" width="100%" />
+  </a>
 </p>
 
-<h1 align="center">BookBuddy</h1>
-
-<p align="center"><i>A spoiler-safe reader's companion — characters, locations, and arcs tracked chapter by chapter.</i></p>
-
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License"></a>
-  <a href="https://alex-potter.github.io/bookbuddy/"><img src="https://img.shields.io/badge/demo-live-blue" alt="Live demo"></a>
-  <img src="https://img.shields.io/badge/PWA-ready-orange" alt="PWA ready">
-  <img src="https://img.shields.io/badge/Android-APK-3DDC84?logo=android&logoColor=white" alt="Android APK">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-c19024?style=flat&labelColor=2c2319" alt="MIT License"></a>
+  <a href="https://alex-potter.github.io/bookbuddy/"><img src="https://img.shields.io/badge/demo-live-4f7579?style=flat&labelColor=2c2319" alt="Live demo"></a>
+  <img src="https://img.shields.io/badge/PWA-ready-b5542b?style=flat&labelColor=2c2319" alt="PWA ready">
+  <img src="https://img.shields.io/badge/Android-APK-c19024?style=flat&labelColor=2c2319&logo=android&logoColor=faf5e8" alt="Android APK">
 </p>
 
 ---
